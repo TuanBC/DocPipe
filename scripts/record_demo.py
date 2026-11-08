@@ -1,8 +1,9 @@
-"""Record the DocPipe demo video by driving the real web UI with Playwright, and write narration subtitles.
+"""Record the DocPipe demo video by driving the real web UI with Playwright, and write narration subtitles plus
+camera keyframes (what to zoom into while each line is narrated).
 
 Prerequisites: services running (scripts/start_services.ps1) and the UI on http://127.0.0.1:8800.
 Run:  uv run --group gateway --with playwright==1.55.0 python scripts/record_demo.py
-Out:  demo/raw.webm and demo/DocPipe_demo.srt (narration = subtitles); scripts/make_video.ps1 burns them into an MP4.
+Out:  demo/raw.webm, demo/narration.json (subtitles), demo/zooms.json (camera); then scripts/make_video.py.
 
 The three uploads are synthetic scans of fictional companies from evals/make_eval_set.py.
 """
@@ -22,18 +23,41 @@ ROLLBACK_DOC = "06aaadd289439e91"  # sample invoice that already has filed versi
 QUESTION = "Hợp đồng cho vay của Công ty Cổ phần Xây dựng Hưng Thịnh: số tiền vay, thời hạn và lãi suất là bao nhiêu?"
 
 cues = []
+zooms = []   # camera keyframes: {"t": seconds, "box": [x, y, w, h] in viewport pixels, or None for the full screen}
 t0 = 0.0
+page = None
+
+
+def now():
+    return time.monotonic() - t0
 
 
 def say(text, hold=0.0):
     """Start a subtitle cue now; the previous cue ends here."""
-    now = time.monotonic() - t0
+    t = now()
     if cues and cues[-1]["end"] is None:
-        cues[-1]["end"] = now
-    cues.append({"start": now, "end": None, "text": text})
-    print(f"[{now:6.1f}s] {text}", flush=True)
+        cues[-1]["end"] = t
+    cues.append({"start": t, "end": None, "text": text})
+    print(f"[{t:6.1f}s] {text}", flush=True)
     if hold:
         time.sleep(hold)
+
+
+def focus(selector, pad=28):
+    """Point the camera at an element: the video zooms in on its on-screen box from this moment."""
+    loc = page.locator(selector).first
+    if not loc.count():
+        return
+    loc.scroll_into_view_if_needed()
+    page.wait_for_timeout(250)
+    b = loc.bounding_box()
+    if b:
+        zooms.append({"t": now(), "box": [b["x"] - pad, b["y"] - pad, b["width"] + 2 * pad, b["height"] + 2 * pad]})
+
+
+def wide():
+    """Zoom back out to the whole screen."""
+    zooms.append({"t": now(), "box": None})
 
 
 def doc_id(name):
@@ -56,7 +80,7 @@ def wrap(text, width=80):
     return "\n".join(lines + [cur])
 
 
-def wait_jobs_done(page, timeout=480):
+def wait_jobs_done(timeout=480):
     end = time.time() + timeout
     while time.time() < end:
         jobs = page.evaluate("fetch('/api/jobs').then(r => r.json())")
@@ -66,8 +90,127 @@ def wait_jobs_done(page, timeout=480):
     raise TimeoutError("jobs did not finish")
 
 
+def script(ids):
+    say("DocPipe turns the scans in a corporate credit file into filed, checked and searchable documents.", 4)
+    focus(".card:has(#drop)")
+    say("A credit officer drops three scans: a loan contract, a supplier invoice photo, and a restaurant menu that does not belong.", 2)
+    page.check("#force")  # re-run even if these samples were processed before (cached pages make it cheap)
+    page.set_input_files("#file", [str(SET / n) for n in UPLOADS])
+    page.wait_for_timeout(1500)
+    focus("#jobs")
+    say("Each file becomes a job. Page images are read by a vision model; pages with a text layer are read for free.", 6)
+    say("The live log shows every step: OCR, classification against a fixed taxonomy, the checks, filing and publishing.", 7)
+
+    wide()
+    say("While the jobs run, the System tab. Every service is healthy, and the monitor reads the audit log.", 0)
+    page.click("#nav button[data-v=system]")
+    page.wait_for_timeout(2500)
+    focus(".card:has(#sys-svc)")
+    page.wait_for_timeout(2000)
+    focus("#mon-metrics")
+    say("It tracks review rate, queue age, schema errors, latency and cost per document, against thresholds in the config.", 6)
+    focus("#mon-active")
+    say("A real alert is firing: one review ticket has waited longer than the 24-hour limit. Alerts also go to a team webhook.", 7)
+
+    wide()
+    page.click("#nav button[data-v=inbox]")
+    say("Back in the inbox, the jobs are finishing.", 0)
+    wait_jobs_done()
+    page.wait_for_timeout(1000)
+    focus("#jobs")
+    say("The contract and the invoice were filed automatically. The menu is outside the taxonomy, so it waits for a person.", 6)
+
+    # library: contract
+    wide()
+    page.click("#nav button[data-v=library]")
+    page.wait_for_timeout(1500)
+    page.evaluate("id => openDoc(id)", ids[UPLOADS[0]])
+    page.wait_for_timeout(2500)
+    focus("#doc > .row")
+    say("The contract is filed under the borrower, Hung Thinh, not under the bank printed first: company, year, document type.", 6)
+    focus("#d-body .split")
+    say("The page image sits next to the OCR text, so anyone can check a line against the original.", 6)
+    page.click("#d-tabs button[data-t=checks]")
+    page.wait_for_timeout(1200)
+    focus("#d-body")
+    say("A contract has no tables, so two deterministic checks gate auto-filing: the quoted evidence and the company name must really appear in the text.", 8)
+
+    # library: invoice
+    wide()
+    page.evaluate("id => openDoc(id)", ids[UPLOADS[1]])
+    page.wait_for_timeout(2500)
+    focus("#doc > .row")
+    say("The invoice goes to the buyer, the bank's customer, not to the seller printed at the top. Six test documents are built to trap exactly this.", 8)
+
+    # review queue
+    wide()
+    page.click("#nav button[data-v=review]")
+    page.wait_for_timeout(2000)
+    focus("#review > *")
+    say("The review queue: the menu waits with its reasons. Nothing in this queue reaches the knowledge base until a named reviewer approves it.", 8)
+
+    # knowledge base
+    wide()
+    page.click("#nav button[data-v=kb]")
+    page.wait_for_timeout(2000)
+    page.fill("#q", QUESTION)
+    focus(".card:has(#q)")
+    say("Staff ask questions in Vietnamese. OpenViking ranks the documents; our own index picks the page and enforces the caller's clearance.", 1)
+    page.click("#q-go")
+    page.wait_for_function("!document.querySelector('#q-go').disabled", timeout=180000)
+    page.wait_for_timeout(800)
+    focus("#answer")
+    say("The answer cites the page it came from. A question the documents cannot answer is refused instead of guessed.", 6)
+    cite = page.locator("#answer [data-cite]").first
+    if cite.count():
+        wide()
+        cite.click()
+        page.wait_for_timeout(2500)
+        focus("#d-body .split")
+        say("One click on the citation opens the exact page.", 4)
+    wide()
+    page.click("#nav button[data-v=kb]")
+    page.wait_for_timeout(2000)
+    focus(".card:has(#kbtree)")
+    say("Inside OpenViking, published documents mirror the same folder tree, with masked text and a summary per document.", 6)
+
+    # versions + rollback
+    wide()
+    page.click("#nav button[data-v=library]")
+    page.wait_for_timeout(1500)
+    page.evaluate("id => openDoc(id)", ROLLBACK_DOC)
+    page.wait_for_timeout(2000)
+    page.click("#d-tabs button[data-t=versions]")
+    page.wait_for_timeout(1500)
+    focus("#d-body")
+    say("Every time a filed document is replaced, the earlier version is kept.", 4)
+    btn = page.locator("[data-rb]").first
+    if btn.count():
+        btn.click()
+        page.wait_for_timeout(3500)
+        focus("#d-body")
+        say("Rolling back restores it to its folder, re-publishes it, and writes the reviewer's name to the audit log. A whole bad release can be undone the same way.", 7)
+
+    # kill switch
+    wide()
+    page.click("#nav button[data-v=system]")
+    page.wait_for_timeout(2000)
+    page.locator("#kill").scroll_into_view_if_needed()
+    page.click("#kill")
+    page.wait_for_timeout(1200)
+    focus(".card:has(#kill)", pad=40)
+    say("If something looks wrong, the kill switch sends every new document to review. One click, logged with who did it.", 5)
+    page.click("#kill")
+    page.wait_for_timeout(1000)
+    page.click("#mon-check")
+    page.evaluate("window.scrollTo(0, 0)")
+    wide()
+    say("A model reads; our checks decide; a person approves what is uncertain. All data shown is synthetic or public.", 6)
+    say("", 0.5)
+
+
 def main():
-    global t0
+    global t0, page
     OUT.mkdir(exist_ok=True)
     vid_dir = OUT / "_video"
     shutil.rmtree(vid_dir, ignore_errors=True)
@@ -76,102 +219,19 @@ def main():
         browser = p.chromium.launch()
         ctx = browser.new_context(viewport={"width": 1440, "height": 900}, record_video_dir=str(vid_dir),
                                   record_video_size={"width": 1440, "height": 900})
+        # Playwright's screencast only emits frames when pixels change, so static moments would shrink in the video and
+        # the subtitles would drift; a 2-pixel element that changes every frame keeps the recording in real time.
+        ctx.add_init_script("""addEventListener('DOMContentLoaded', () => { const d = document.createElement('div');
+          d.style.cssText = 'position:fixed;right:0;bottom:0;width:2px;height:2px;z-index:99999;pointer-events:none';
+          document.body.appendChild(d); let n = 0; (function tick() { d.style.background = (n++ % 2) ? '#fefefe' : '#fdfdfd';
+          requestAnimationFrame(tick); })(); });""")
         page = ctx.new_page()
         t0 = time.monotonic()
         page.on("dialog", lambda d: d.accept("TuanBC" if "name" in d.message.lower() else "demo: restore the earlier version"))
         page.goto(URL + "/#inbox")
         page.wait_for_timeout(1500)
-
-        say("DocPipe turns the scans in a corporate credit file into filed, checked and searchable documents.", 4)
-        say("A credit officer drops three scans: a loan contract, a supplier invoice photo, and a restaurant menu that does not belong.", 2)
-        page.check("#force")  # re-run even if these samples were processed before (cached pages make it cheap)
-        page.set_input_files("#file", [str(SET / n) for n in UPLOADS])
-        page.wait_for_timeout(2500)
-        say("Each file becomes a job. Page images are read by a vision model; pages with a text layer are read for free.", 6)
-        page.locator("#jobs").scroll_into_view_if_needed()
-        say("The live log shows every step: OCR, classification against a fixed taxonomy, the checks, filing and publishing.", 7)
-
-        say("While the jobs run, the System tab. Every service is healthy, and the monitor reads the audit log.", 0)
-        page.click("#nav button[data-v=system]")
-        page.wait_for_timeout(4000)
-        page.locator("#mon-active").scroll_into_view_if_needed()
-        say("It tracks review rate, queue age, schema errors, latency and cost per document, against thresholds in the config.", 6)
-        say("A real alert is firing: one review ticket has waited longer than the 24-hour limit. Alerts also go to a team webhook.", 7)
-
-        page.click("#nav button[data-v=inbox]")
-        say("Back in the inbox, the jobs are finishing.", 0)
-        wait_jobs_done(page)
-        page.wait_for_timeout(2500)
-        say("The contract and the invoice were filed automatically. The menu is outside the taxonomy, so it waits for a person.", 6)
-
-        # library: contract
-        page.click("#nav button[data-v=library]")
-        page.wait_for_timeout(2000)
-        page.evaluate("id => openDoc(id)", ids[UPLOADS[0]])
-        page.wait_for_timeout(3500)
-        say("The contract is filed under the borrower, Hung Thinh, not under the bank printed first: company, year, document type.", 6)
-        say("The page image sits next to the OCR text, so anyone can check a line against the original.", 6)
-        page.click("#d-tabs button[data-t=checks]")
-        page.wait_for_timeout(1500)
-        say("A contract has no tables, so two deterministic checks gate auto-filing: the quoted evidence and the company name must really appear in the text.", 8)
-
-        # library: invoice
-        page.evaluate("id => openDoc(id)", ids[UPLOADS[1]])
-        page.wait_for_timeout(3500)
-        say("The invoice goes to the buyer, the bank's customer, not to the seller printed at the top. Six test documents are built to trap exactly this.", 8)
-
-        # review queue
-        page.click("#nav button[data-v=review]")
-        page.wait_for_timeout(2500)
-        say("The review queue: the menu waits with its reasons. Nothing in this queue reaches the knowledge base until a named reviewer approves it.", 8)
-
-        # knowledge base
-        page.click("#nav button[data-v=kb]")
-        page.wait_for_timeout(2500)
-        page.fill("#q", QUESTION)
-        say("Staff ask questions in Vietnamese. OpenViking ranks the documents; our own index picks the page and enforces the caller's clearance.", 1)
-        page.click("#q-go")
-        page.wait_for_function("!document.querySelector('#q-go').disabled", timeout=180000)
-        page.wait_for_timeout(1500)
-        say("The answer cites the page it came from. A question the documents cannot answer is refused instead of guessed.", 6)
-        cite = page.locator("#answer [data-cite]").first
-        if cite.count():
-            cite.click()
-            page.wait_for_timeout(3500)
-            say("One click on the citation opens the exact page.", 4)
-        page.click("#nav button[data-v=kb]")
-        page.wait_for_timeout(2500)
-        page.locator("#kbtree").scroll_into_view_if_needed()
-        say("Inside OpenViking, published documents mirror the same folder tree, with masked text and a summary per document.", 6)
-
-        # versions + rollback
-        page.click("#nav button[data-v=library]")
-        page.wait_for_timeout(1500)
-        page.evaluate("id => openDoc(id)", ROLLBACK_DOC)
-        page.wait_for_timeout(2500)
-        page.click("#d-tabs button[data-t=versions]")
-        page.wait_for_timeout(2000)
-        say("Every time a filed document is replaced, the earlier version is kept.", 4)
-        btn = page.locator("[data-rb]").first
-        if btn.count():
-            btn.click()
-            page.wait_for_timeout(2500)
-            say("Rolling back restores it to its folder, re-publishes it, and writes the reviewer's name to the audit log. A whole bad release can be undone the same way.", 7)
-
-        # kill switch
-        page.click("#nav button[data-v=system]")
-        page.wait_for_timeout(2500)
-        page.locator("#kill").scroll_into_view_if_needed()
-        page.click("#kill")
-        page.wait_for_timeout(2000)
-        say("If something looks wrong, the kill switch sends every new document to review. One click, logged with who did it.", 5)
-        page.click("#kill")
-        page.wait_for_timeout(1500)
-        page.click("#mon-check")
-        page.locator("#mon-active").scroll_into_view_if_needed()
-        say("A model reads; our checks decide; a person approves what is uncertain. All data shown is synthetic or public.", 6)
-        say("", 0.5)
-
+        script(ids)
+        t_close = now()
         ctx.close()
         browser.close()
     cues[-1]["end"] = cues[-1]["start"] + 0.5
@@ -182,7 +242,8 @@ def main():
     srt = "\n".join(f"{i}\n{srt_time(c['start'])} --> {srt_time(c['end'])}\n{wrap(c['text'])}\n" for i, c in enumerate(cues, 1))
     (OUT / "DocPipe_demo.srt").write_text(srt, encoding="utf-8")
     (OUT / "narration.json").write_text(json.dumps(cues, ensure_ascii=False, indent=1), encoding="utf-8")
-    print(f"video {OUT / 'raw.webm'}  subtitles {OUT / 'DocPipe_demo.srt'}  length {cues[-1]['end']:.0f}s")
+    (OUT / "zooms.json").write_text(json.dumps({"t_close": t_close, "keys": zooms}, indent=1), encoding="utf-8")
+    print(f"video {OUT / 'raw.webm'}  subtitles + camera in {OUT}  length {cues[-1]['end']:.0f}s")
 
 
 if __name__ == "__main__":

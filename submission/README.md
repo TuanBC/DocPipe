@@ -6,7 +6,7 @@ knowledge assistant). All data is public company filings or synthetic scans of f
 | # | Brief item | Files |
 |---|---|---|
 | 1 | Decision memo and business case (max 6 pages) | `01_Decision_memo_and_business_case.pdf` (3 pages) · workbook `02_Business_case_model.xlsx` (inputs tagged MEASURED / PUBLIC / ASSUMED, sensitivity, scenarios, scale) |
-| 2 | Working prototype: demo video + repository with README | `DocPipe_demo.mp4` (about 3 minutes, narration as subtitles; `DocPipe_demo.srt` for the voice-over) · repository root `../README.md` · run with `scripts/start_services.ps1`, then http://127.0.0.1:8800 |
+| 2 | Working prototype: demo video + repository with README | `DocPipe_demo.mp4` (about 3 minutes, zooms into what each narration line describes, narration as subtitles; `DocPipe_demo.srt` for the voice-over) · repository root `../README.md` · run with `scripts/start_services.ps1`, then http://127.0.0.1:8800 |
 | 3 | Architecture and evaluation | `03_Architecture_and_evaluation.pdf`: target architecture, 3 key decisions and trade-offs, security / privacy / audit, all evaluation results with failure cases, cost and latency |
 | 4 | Automation and rollout plan | `04_Automation_and_rollout_plan.pdf`: production-standard checklist (re-run, monitoring, alerts, kill switch, rollback), governance, what breaks if it is wrong, before / after, projection at scale, 3-month plan, adoption guide |
 | 5 | AI log and reflection (max 1 page) | `05_AI_log_and_reflection.pdf` (1 page) |

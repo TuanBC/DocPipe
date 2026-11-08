@@ -4,104 +4,104 @@ DocPipe turns the scans in a corporate credit file into filed, checked and
 searchable documents.
 
 2
-00:00:00,000 --> 00:00:01,222
+00:00:00,000 --> 00:00:00,000
 A credit officer drops three scans: a loan contract, a supplier invoice photo,
 and a restaurant menu that does not belong.
 
 3
-00:00:01,222 --> 00:00:07,299
+00:00:00,000 --> 00:00:03,061
 Each file becomes a job. Page images are read by a vision model; pages with a
 text layer are read for free.
 
 4
-00:00:07,299 --> 00:00:14,300
+00:00:03,061 --> 00:00:10,064
 The live log shows every step: OCR, classification against a fixed taxonomy, the
 checks, filing and publishing.
 
 5
-00:00:14,300 --> 00:00:18,463
+00:00:10,064 --> 00:00:15,467
 While the jobs run, the System tab. Every service is healthy, and the monitor
 reads the audit log.
 
 6
-00:00:18,463 --> 00:00:24,463
+00:00:15,467 --> 00:00:21,781
 It tracks review rate, queue age, schema errors, latency and cost per document,
 against thresholds in the config.
 
 7
-00:00:24,463 --> 00:00:31,485
+00:00:21,781 --> 00:00:28,839
 A real alert is firing: one review ticket has waited longer than the 24-hour
 limit. Alerts also go to a team webhook.
 
 8
-00:00:31,485 --> 00:00:51,242
+00:00:28,839 --> 00:00:44,266
 Back in the inbox, the jobs are finishing. (waiting shown 10x faster)
 
 9
-00:00:51,242 --> 00:01:02,808
+00:00:44,266 --> 00:00:54,646
 The contract and the invoice were filed automatically. The menu is outside the
 taxonomy, so it waits for a person.
 
 10
-00:01:02,808 --> 00:01:08,808
+00:00:54,646 --> 00:01:00,967
 The contract is filed under the borrower, Hung Thinh, not under the bank printed
 first: company, year, document type.
 
 11
-00:01:08,808 --> 00:01:16,345
+00:01:00,967 --> 00:01:08,552
 The page image sits next to the OCR text, so anyone can check a line against the
 original.
 
 12
-00:01:16,345 --> 00:01:27,863
+00:01:08,552 --> 00:01:19,415
 A contract has no tables, so two deterministic checks gate auto-filing: the
 quoted evidence and the company name must really appear in the text.
 
 13
-00:01:27,863 --> 00:01:38,410
+00:01:19,415 --> 00:01:29,817
 The invoice goes to the buyer, the bank's customer, not to the seller printed at
 the top. Six test documents are built to trap exactly this.
 
 14
-00:01:38,410 --> 00:01:48,976
+00:01:29,817 --> 00:01:40,197
 The review queue: the menu waits with its reasons. Nothing in this queue reaches
 the knowledge base until a named reviewer approves it.
 
 15
-00:01:48,976 --> 00:01:55,452
+00:01:40,197 --> 00:01:46,681
 Staff ask questions in Vietnamese. OpenViking ranks the documents; our own index
 picks the page and enforces the caller's clearance.
 
 16
-00:01:55,452 --> 00:02:04,988
+00:01:46,681 --> 00:01:55,613
 The answer cites the page it came from. A question the documents cannot answer
 is refused instead of guessed.
 
 17
-00:02:04,988 --> 00:02:11,536
+00:01:55,613 --> 00:02:02,005
 One click on the citation opens the exact page.
 
 18
-00:02:11,536 --> 00:02:23,642
+00:02:02,005 --> 00:02:13,520
 Inside OpenViking, published documents mirror the same folder tree, with masked
 text and a summary per document.
 
 19
-00:02:23,642 --> 00:02:30,205
+00:02:13,520 --> 00:02:21,461
 Every time a filed document is replaced, the earlier version is kept.
 
 20
-00:02:30,205 --> 00:02:41,813
+00:02:21,461 --> 00:02:32,206
 Rolling back restores it to its folder, re-publishes it, and writes the
 reviewer's name to the audit log. A whole bad release can be undone the same
 way.
 
 21
-00:02:41,813 --> 00:02:48,424
+00:02:32,206 --> 00:02:38,332
 If something looks wrong, the kill switch sends every new document to review.
 One click, logged with who did it.
 
 22
-00:02:48,424 --> 00:02:54,425
+00:02:38,332 --> 00:02:44,332
 A model reads; our checks decide; a person approves what is uncertain. All data
 shown is synthetic or public.

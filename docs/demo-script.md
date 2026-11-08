@@ -3,7 +3,7 @@
 ## Recorded video (about 3 minutes)
 
 `submission/DocPipe_demo.mp4` was recorded by driving the real UI (`scripts/record_demo.py`, Playwright) with the
-narration burned in as subtitles; the wait for the jobs is shown 10x faster and says so. The same narration is in `submission/DocPipe_demo.srt` with timings, so a voice-over
+narration burned in as subtitles. The camera zooms into whatever each line describes (the recorder logs the on-screen box of each element; `scripts/make_video.py` eases the zoom in and out), and the wait for the jobs is shown 10x faster and says so. The same narration is in `submission/DocPipe_demo.srt` with timings, so a voice-over
 can be recorded over it line by line. To re-record: start the services, then
 
 ```bash
