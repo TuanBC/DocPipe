@@ -1,43 +1,44 @@
-# AI log and reflection (target: one page)
+# AI log and reflection
 
-Tool: an AI coding assistant (this session) for research, code, evaluation and drafting; GPT-6 Luna as the model inside the prototype.
-The prompts below are **paraphrased from the session**; replace them with the verbatim text before submitting.
+Tools: Claude Code (AI coding agent) for research, code, evaluation, documents and the deck; GPT-6 Luna (through
+LiteLLM) as the model inside DocPipe. Prompts 6-9 are verbatim; 1-5 are from earlier sessions whose transcripts are
+not on this machine, so they are paraphrased.
 
-## Most important prompts (paraphrased)
+## The prompts that mattered
 
-1. "Decompose the assignment into a plan for the presentation and slides; focus on document digitalisation into a file system and knowledge base; I plan PaddleOCR, BERTopic or a small LLM for tags, then OpenViking."
-2. "Replace OCR with a VLM API call to simplify, and explain it in the plan."
-3. "Use GPT-6 Luna through the Codex route of a LiteLLM gateway; add a Hermes agent connected to the KB; add Langfuse tracing."
-4. "Mention PII removal (Presidio via LiteLLM, or a local guardrail model); for the demo use Luna."
-5. "Start without containers" (after Podman failed), then "continue with all remaining steps until finished".
+1. *(paraphrased)* "Plan the challenge around document digitalisation into a file system and a knowledge base; I am thinking PaddleOCR, BERTopic or a small LLM for tags, then OpenViking."
+2. *(paraphrased)* "Replace the OCR stack with a vision-model call to simplify, and explain why in the plan."
+3. *(paraphrased)* "Use GPT-6 Luna through a LiteLLM gateway; connect an agent to the KB; add tracing and PII removal."
+4. *(paraphrased)* "Start without containers" (after Podman failed), then "continue with all remaining steps until finished."
+5. *(paraphrased)* "Measure it: seeded errors, scans without a text layer, KB questions with citations, prompt injection."
+6. "Review the current status of the code. I want to make sure all components works end 2 end, and you have all right to install new things and dev new things, UI, connect stuffs to make it works for both document organization into folder, organize in openviking knowledge base, and ocr via LLM."
+7. "Read the mission, and the deliverable needed to be prepared, including the demo, the presentation files, explain the technical decision, architecture and stuffs. Read the whole document and give me the plan to make all of them. I will approve before you make it. Remember to commit code and stuffs as well"
+8. "About the deck, you can build it yourself, don't rely from the build_deck.py"
+9. "I will add my voice later. You can record and add the content that you need to narrate as subtitle"
 
 ## Where the AI got it wrong, and how it was fixed
 
 | What went wrong | How it showed up | Fix |
 |---|---|---|
 | Assumed provider-side JSON schema works on the subscription route | Smoke test returned invented keys | Schema in the prompt, local validation, bounded retry |
-| Assumed the Codex route serves embeddings | `Unmapped LLM provider` error | Local CPU embedding service for the KB |
-| Planned LiteLLM budgets as a cost control | LiteLLM docs: models have no price in the cost map, spend is $0 | Cost from measured tokens x list price; rpm/tpm limits |
-| PII regex flagged a financial figure as a phone number | Real Vinamilk page | Phone validator rejects mixed separators and thousands grouping |
-| First text-support check tolerated 5% unsupported numbers | A seeded fabricated value passed | Strict by default; then a real digit drop (511.184 read as 51,184) was caught |
-| Validator label patterns were too loose or too narrow | On a bank statement a "net profit" check matched the wrong line; on Hòa Phát the VAS line-code suffix and "Thu nhập thuế TNDN hoãn lại" were missed | Anchored patterns, suffix stripping, per-page tax lines. These were found only by running on new issuers, so the patterns were tuned on those documents: no held-out accuracy claim |
-| Router fix broke what worked | A 800-character title window routed 1 of 3 Vinamilk statement pages | Relative title position plus earliest match |
-| Memory failures (`malloc` in PyMuPDF, `MemoryError` in tiktoken) | Machine near its commit limit | Grayscale render, 2400 px cap, fewer concurrent jobs |
-| Edited files using guessed line numbers three times | Syntax errors and misplaced lines | Re-read the region before every edit |
-| A WSL config tweak (`localhostForwarding=false`) crashed the WSL service | `WSLService` stopped | Reverted the file; Podman remains unusable, reported rather than worked around |
-| Slide text said a Luna vs Sol comparison existed | It had not been run | Slide corrected to "not measured" |
+| OpenViking summaries failed silently | Search matched folder names only; found only when reading `.overview.md` | Gateway rejected `temperature=0`; `drop_params: true`; status `ingested_no_summary` is now reported, all documents re-synced |
+| Net-profit check counted the bank's tax three times | Techcombank statements sent to review | Prefer the total tax line; sum components only when no total is printed |
+| Invoice filed under the seller | Folder named after the supplier, not the bank's customer | Classifier rule: name the bank's customer (buyer, borrower, account holder), never the bank, auditor or a government office; 6/6 traps now pass |
+| An evaluation run could publish seeded wrong copies into the real KB | Noticed before the first sync, run stopped | Publish guard: only the configured output folder publishes; unit-tested |
+| Concurrent evaluation runs raced on the same files | One result contaminated | Re-ran sequentially; harnesses use their own folders |
+| Synthetic test set looked "perfect" (CER 0.000) | Suspicious score on a 40%-resolution photo | Checked the raw output by hand: genuinely exact. Also found the real failure: the model invents a table header row |
+| Business case first used the synthetic auto-file rate (88%) as the base | Too optimistic for real scans | Discounted to 70% and labelled; sensitivity shows manual minutes matter more than automation rate |
+| Validator label patterns too loose or too narrow on new issuers | False alarms on Hòa Phát and the bank format | Anchored patterns; tuned on those documents, so no held-out accuracy claim |
 
-## What AI helped with / could not help with
+## What AI helped with, and what it could not do
 
-Helped: reading docs quickly (LiteLLM, OpenViking, Langfuse, Presidio), writing the pipeline and harnesses, finding failure cases by
-running on real documents, drafting memo and plans.
-Could not: get Podman working (OS-level), produce real stakeholder evidence (none was collected; sources are public or
-simulated and labelled), verify rendering of the deck and workbook (no PowerPoint or Excel here), or set business-case
-inputs (placeholders).
+Helped: reading unfamiliar docs fast (LiteLLM, OpenViking, pptxgenjs), writing the pipeline, the UI and the harnesses,
+generating labelled synthetic scans with traps, finding failure cases by running on real documents, drafting the memo,
+plans and deck. Could not: talk to stakeholders (no real interview yet; the memo says so), time the real manual work,
+get containers running on this machine, or decide the business-case inputs (they are labelled assumptions).
 
 ## What I learned
 
-The model is the cheap, replaceable part; trust comes from checks around it, and the checks need their own evaluation
-(they produced false alarms on every new issuer layout). A single sample proves feasibility, not accuracy; the honest
-numbers are the failure cases. The environment (memory, containers, license of a dependency, what a subscription route does
-not support) cost more time than the model.
+The model is the cheap, replaceable part; trust comes from the checks around it, and those checks need their own
+evaluation. Silent failures (a summary that never generated, an eval that could write to production) cost more than
+loud ones, so every component now reports its state. A perfect score is a reason to look harder, not to stop.

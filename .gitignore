@@ -13,3 +13,4 @@ deploy/.env
 scripts/.login.log
 *.log
 slides/node_modules/
+slides/render/
