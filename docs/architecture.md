@@ -1,91 +1,106 @@
 # Architecture, key decisions and trade-offs
 
-Scope: corporate-credit document intake. Financial statements and annual reports go in; filed, validated,
-searchable knowledge comes out. Public documents only in the prototype.
+DocPipe takes scanned or digital documents for corporate credit (financial statements, annual reports,
+registration certificates, contracts, invoices, collateral papers, resolutions, tax filings, bank statements),
+reads them with a vision model, files them into a predictable folder tree, publishes a masked copy to a knowledge
+base, and answers staff questions with page citations. Anything it is not sure about goes to a human first.
+Prototype data: public filings and synthetic scans of fictional companies only.
+
+![Target architecture](img/architecture.png)
 
 ## 1. Target architecture (what a bank would run)
 
 ```mermaid
 flowchart LR
-  IN[Intake: SFTP / mailbox / upload API] --> Q[(Queue)]
-  Q --> W[Stateless workers: route, extract, validate, PII guard]
+  UP[Web upload / API] --> Q[(Job queue)]
+  SC[Branch scanner / mailbox / SFTP] --> Q
+  Q --> W
+  subgraph W[Stateless worker: one document per job]
+    R[Page router] --> O[OCR: text layer free, image pages to VLM]
+    O --> C[Classify: fixed taxonomy + evidence quote]
+    C --> X[Extract statement tables]
+    X --> V[Deterministic validators + confidence]
+    V --> P[PII mask]
+  end
   W --> GW[Model gateway: LiteLLM]
-  GW --> M1[In-bank VLM endpoint]
-  GW -. demo only .-> M2[Hosted model]
-  W --> V[Validators + confidence]
-  V -->|pass| F[Filing: folders + sidecar + masked KB export]
-  V -->|fail / low confidence| R[Review queue + UI]
-  R --> F
-  F --> KB[(Knowledge base via adapter: OpenViking)]
-  U[Analyst] --> A[Agent: Hermes, read-only] --> ACL[Access layer] --> KB
-  W & A --> LF[(Langfuse: traces, cost, eval scores)]
-  F & R & V --> AUD[(Audit log, append-only)]
+  GW --> M1[In-bank VLM endpoint: target]
+  GW -. prototype .-> M2[Hosted model]
+  P -->|confident| F[Filing: company / year / period-or-type]
+  P -->|uncertain| RQ[Review queue + UI]
+  RQ -->|approve / correct| F
+  F --> H[(Version history)]
+  F --> KB[(OpenViking KB: same tree, masked text)]
+  U[Staff] --> QA[Cited Q&A + access filter] --> KB
+  W --> AUD[(Append-only audit log)]
+  F --> AUD
+  RQ --> AUD
+  QA --> AUD
+  AUD --> MON[Monitor: metrics, thresholds, alerts, webhook]
 ```
 
-| Concern | Design |
-|---|---|
-| Scale to thousands of users | Workers are stateless and idempotent (content-hash keyed, per-page cache), so they scale horizontally behind a queue. The gateway enforces rate limits and per-component keys. Review and Q&A are separate paths from ingestion, so one cannot starve the other. |
-| Existing systems | Integration is through the filing step: a folder layout plus sidecar JSON with every value, its source page and its checks. A credit system or spreading tool reads the sidecar; nothing replaces the system of record. |
-| Security / privacy | Data classification on every document (`internal` / `restricted`). The KB indexes PII-masked text; originals and the PII mapping sit in a restricted store. The agent is read-only and sees masked text unless the user is cleared. See section 3. |
-| Auditability | `audit.jsonl` (target: append-only store) records every model call (model, prompt hash, tokens, latency, raw response), every validator result, every decision, every human correction. A filed value can be traced to a page and replayed. |
-| Failure and rollback | Idempotent re-run, page cache for resume, kill switch (flag file) that sends everything to review, reviewer correction that re-validates and re-files. Re-filing removes the earlier copy of the same document. |
+| Concern | Design in the prototype | At bank scale |
+|---|---|---|
+| Thousands of users | Ingestion runs through one background worker per process; reads (library, Q&A) are served directly. Each document is independent and idempotent (content-hash id, per-page cache). | N stateless workers behind a queue, one document per job; the gateway enforces per-team rate limits and budgets. Review UI and Q&A scale separately from ingestion, so one cannot starve the other. |
+| Existing systems | Integration is the filed folder plus a sidecar JSON: every field, its source page, its checks, the decision, the model and pipeline version. | A loan-origination or spreading system reads the sidecar or a REST call; DocPipe never becomes the system of record. The folder tree maps onto the bank's document-management system. |
+| Data classification | Every document is tagged `internal` or `restricted` (PII found in what is published). Originals and the PII mapping stay in a restricted local store; the KB only receives masked text. | Classification drives storage location, retention and who may query. |
+| Access control | Q&A filters chunks by the caller's clearance before the model sees them; a restricted chunk never reaches an internal user (tested). | Clearance from the bank's identity provider (AD groups), enforced in our access layer, not delegated to the KB vendor. |
+| Audit trail | `audit.jsonl`: every model call (model, prompt hash, tokens, latency, raw response), check, decision, approval, correction, rollback, alert and kill-switch change, with actor and time. | Shipped to the bank's log platform (append-only, retention policy); the same events feed dashboards. |
+| Safe re-run, rollback | Re-runs are idempotent; every replaced filed version is kept in `_history/`; `docpipe rollback <doc>` or `--release <version>` restores and re-publishes, and is itself reversible. | Same, with history in object storage. |
+| Monitoring | `docpipe/monitor.py`: review rate, queue age, validator failure rate, schema-invalid replies, model errors, p95 latency, cost per document, KB publish errors, "auto-filed then corrected"; thresholds in config; alerts to file, audit log, UI banner and an optional webhook. | Same rules in the bank's monitoring stack, with an on-call rota for critical alerts. |
 
 ## 2. The controls that make a model output trustworthy
 
-Nothing the model returns is trusted by itself. Controls, in the order they run:
+Nothing the model returns is trusted on its own. In the order they run:
 
-1. **Router**: only statement pages go to extraction (a cost and risk control). Text-layer pages are routed by title and numeric density; pages without a text layer are classified by a cheap low-resolution call.
-2. **Schema in the prompt, validated locally** with a bounded retry; provider-side schema enforcement did not work on the subscription route (`docs/day1-findings.md`).
-3. **Evidence per value**: each item carries the printed row text.
-4. **Deterministic validators**: balance identities, current + non-current, gross profit, net profit, cash roll-forward, net change = operating + investing + financing, cash tie-out between statements, unit presence and consistency, and "every number must be printed in the page text layer".
-5. **Two-pass agreement** where there is no text layer: an independent re-read (different prompt and resolution); any disagreeing value fails the check.
-6. **Confidence from signals**: each failed check halves the document confidence. The model's own confidence is only used for document type.
-7. **Decision**: below threshold, kill switch, or type outside the taxonomy goes to the review queue.
+1. **Page router**: only statement pages go to table extraction (cost and risk control); a 111-page annual report costs 3 pages.
+2. **OCR policy**: text-layer pages are read for free; image pages go to the VLM (cached, capped per document so a 300-page scan cannot run up a bill).
+3. **Fixed taxonomy + evidence**: the classifier must quote the text that proves the document type and name the bank's *customer* (borrower, buyer, account holder), never the bank, the auditor or a government office.
+4. **Evidence checks for documents without tables**: the quoted evidence and the company name must actually appear in the OCR text; otherwise the document goes to review.
+5. **Schema validated locally** with a bounded retry (provider-side schema enforcement did not work on the subscription route).
+6. **Deterministic validators for statements**: balance identities, current + non-current, gross and net profit, cash roll-forward, unit consistency, and "every number must be printed on the page".
+7. **Two-pass agreement** on scanned statement pages: an independent second read; any disagreeing value fails.
+8. **Confidence from signals**: each failed check halves the confidence; below the threshold, outside the taxonomy, or with the kill switch on, the document goes to review.
 
-Measured behaviour is in `docs/eval-results.md`.
+## 3. Key decisions and trade-offs
 
-## 3. Privacy by design: the ladder
+The three decisions that shape cost, speed and risk most:
 
-A hosted model sees page images. A text guardrail cannot mask an image, so privacy is a ladder, not a switch.
-
-| Level | Detector | Where | Protects the first hop? | State |
+| # | Decision | Gain | Price (cost / speed / risk) | How the loss is limited |
 |---|---|---|---|---|
-| L0 | Luna flags PII in the transcript | Hosted provider | No (image already sent) | Built, measured (seeded synthetic lines) |
-| L1 | Regex recognizers for Vietnamese IDs, phones, emails | Local | Yes for text calls | Built in `docpipe/pii.py`; Presidio version in `deploy/` is untested |
-| L2 | L1 + local Vietnamese NER for names and addresses | Local, CPU | Yes for text | Not built |
-| L3 | In-bank VLM endpoint, or local OCR then mask then LLM | In-bank | Yes, including images | Target for pilot |
+| 1 | **Vision model for OCR, not an OCR engine + layout rules** | One call reads Vietnamese diacritics, stamps, skewed photos and tables; no per-template tuning. Measured on 16 synthetic scans: 106/106 printed amounts and codes exact, median CER 0.013. | Cost ~$0.0013 per document at list price; ~13 s per document; risk: the model can invent text (it added a table header and a stamp description that were not printed) or drop a digit, and page images leave the bank on a hosted route. | Validators, evidence checks, two-pass agreement on statements, review queue; an in-bank endpoint is a gate before any non-public document. The text layer is used for free whenever it exists. |
+| 2 | **Deterministic checks + human review decide, not the model's confidence** | Every auto-filed result passed checks we wrote and can explain to an auditor; failures are visible and countable. | Speed: some correct documents wait for a reviewer (false alarms were real on new issuer layouts). Cost: reviewer minutes. | Reviewers see the page next to the value; thresholds tuned on pilot data; the review rate is a monitored metric with an alert. |
+| 3 | **OpenViking for the knowledge base, behind an adapter, with our own access layer** | Its `viking://` tree mirrors the folder design, it writes per-document summaries, and it ranks whole documents well; agents can use it over MCP. | Risk: AGPL-3.0 licence, young project, RBAC not verified; summaries cost a model call per document (~40 s). | Adapter keeps it swappable (a local BM25 fallback is built and used on outage); page citations and access filtering stay in our code; legal review before production. |
 
-Presidio has no built-in Vietnamese recognizers or NLP model, so L1 needs custom recognizers and L2 needs a Vietnamese NER model.
+Smaller decisions: a fixed taxonomy instead of topic discovery (auditable labels; BERTopic stays an offline tool);
+PII masking with local regex today, local NER next, in-bank model as the real barrier (section 4); the ChatGPT
+subscription route through LiteLLM for the demo only (spend shows as $0, so cost is computed from measured tokens
+x list price).
 
-Legal context (public, secondary sources, not read in full text): Personal Data Protection Law 91/2025/QH15 and Decree
-356/2025/ND-CP (from 1 Jan 2026) require an impact assessment filed with the authority for cross-border transfers of
-personal data; Circular 53/2026/TT-NHNN on AI in banking says outsourcing does not shift responsibility. The
-documents in this prototype are public company filings; a production corpus will contain personal data, so the
-in-bank endpoint is a gate before pilot, not an optimisation.
+## 4. Privacy by design: the ladder
 
-## 4. Key decisions and trade-offs
+A hosted model sees page images, and a text guardrail cannot mask an image, so privacy is a ladder, not a switch.
 
-| # | Decision | Gain | Price | How the loss is limited |
-|---|---|---|---|---|
-| 1 | VLM instead of OCR + rules | One call; reads Vietnamese tables with diacritics; no OCR tuning. The PDF text layer scrambles table order (labels and numbers come out in separate blocks), so text extraction alone cannot rebuild a statement. | Hallucinated or dropped digits; no per-field confidence; images leave the bank | Validators, text-layer check, two-pass agreement, review queue; in-bank endpoint before pilot |
-| 2 | Fixed taxonomy + LLM classifier, not BERTopic | Auditable labels; anything else goes to review | Cannot discover new categories | BERTopic stays an offline discovery tool |
-| 3 | OpenViking behind an adapter | Its `viking://` filesystem matches the folder design; MCP access for the agent | AGPL-3.0 (verified in the repo's LICENSE); RBAC unverified; single-vendor governance | Adapter keeps it swappable; our own access layer; legal review before production |
-| 4 | Detector placement for PII | Hosted is simple; local is a real barrier | Hosted detection is not a barrier; regex misses names | The ladder; measured precision and recall |
-| 5 | Model route for the demo: ChatGPT subscription through LiteLLM | Zero marginal cost, one gateway | Spend recorded as $0 (no budget enforcement), one shared identity, quota owned by OpenAI, ToS for shared use unchecked, no embeddings, schema not enforced | Cost computed from measured tokens x list price; rpm/tpm limits; production uses a priced, contractual endpoint |
+| Level | What | Protects the first hop? | State |
+|---|---|---|---|
+| L1 | Local regex recognizers for Vietnamese ID numbers, phones, e-mails; masked before the KB | Text calls only | Built, measured (`evals/pii_eval.py`) |
+| L2 | L1 + local Vietnamese NER for names and addresses | Text calls only | Not built (regex misses names: known gap) |
+| L3 | In-bank VLM endpoint (or local OCR, mask, then LLM) | Yes, including images | Gate before pilot |
 
-## 5. What this does not do
+Legal context (secondary sources, to confirm with legal): Personal Data Protection Law 91/2025/QH15 and Decree
+356/2025/ND-CP require an impact assessment for cross-border transfers of personal data; Circular 53/2026/TT-NHNN
+says outsourcing an AI component does not shift responsibility.
 
-No credit decisioning, no fine-tuning, no analytics database, no replacement of a core system. A statement type
-outside the validator patterns still gets extracted and filed, but its arithmetic checks skip instead of failing.
+## 5. What it does not do (on purpose)
+
+No credit decisioning, no fine-tuning, no analytics warehouse, no replacement of the document-management or
+loan-origination system, no unsupervised filing of documents outside the taxonomy.
 
 ## 6. Status of the stack
 
 | Component | State |
 |---|---|
-| docpipe (router, extraction, validators, two-pass for scans, PII guard, filing, review, correction, kill switch, audit) | Working natively; measured in `docs/eval-results.md` |
-| KB (local BM25 backend with access filter) and cited Q&A (`docpipe ask`) | Working; dense embeddings could not load on the dev machine (commit limit), so retrieval is BM25-only |
-| LiteLLM as SDK (model calls) | Working |
-| LiteLLM proxy + OpenViking server + Copilot embedding shim, native | Run: gateway served the Q&A call; 4 masked documents ingested with real embeddings; document-level retrieval measured (eval-results 7d) |
-| Langfuse, Presidio, TEI embeddings, container compose | `deploy/` files written, **never run**: Podman/WSL does not start on the dev machine |
-| Hermes agent over the KB | Not run by me; the user reports it working with the OpenViking MCP server |
-| Langfuse callback | Wired through LiteLLM metadata and an env switch; not tested against a server |
+| Pipeline: router, OCR, classification, extraction, validators, two-pass, PII mask, filing, review, correction, kill switch, audit | Working, measured (`docs/eval-results.md`) |
+| Monitoring + alerts, version history + rollback | Working, unit-tested, demonstrated on real output |
+| OpenViking 0.5.3 server, LiteLLM proxy, embedding endpoint | Running natively; documents published under `viking://resources/docpipe/{company}/{year}/{period-or-type}/` |
+| Web UI (inbox, library, review, knowledge base, system) | Working (`docpipe serve`) |
+| Langfuse, Presidio, container compose | Config written in `deploy/`, not run (containers do not start on the dev machine) |

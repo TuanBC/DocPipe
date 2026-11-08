@@ -1,0 +1,167 @@
+{
+ "inputs": {
+  "a_docs": {
+   "value": 600,
+   "source": "ASSUMED"
+  },
+  "a_manual_min": {
+   "value": 60,
+   "source": "PUBLIC range 30-360 min/spread; ASSUMED low end"
+  },
+  "a_auto_share": {
+   "value": 0.6,
+   "source": "MEASURED 11/14 docs on dev set; ASSUMED lower for real mix"
+  },
+  "a_review_min": {
+   "value": 15,
+   "source": "ASSUMED"
+  },
+  "a_cost_doc_usd": {
+   "value": 0.004,
+   "source": "MEASURED $0.0013/page x ~3 pages"
+  },
+  "b_docs": {
+   "value": 4000,
+   "source": "ASSUMED"
+  },
+  "b_manual_min": {
+   "value": 6,
+   "source": "ASSUMED; time it in week 1"
+  },
+  "b_auto_share": {
+   "value": 0.7,
+   "source": "MEASURED 88% on 16 synthetic scans; discounted to 70% for real-world mix"
+  },
+  "b_review_min": {
+   "value": 2,
+   "source": "ASSUMED"
+  },
+  "b_cost_doc_usd": {
+   "value": 0.00134,
+   "source": "MEASURED (list price)"
+  },
+  "audit_min": {
+   "value": 0.5,
+   "source": "ASSUMED policy"
+  },
+  "hourly_cost": {
+   "value": 250000,
+   "source": "ASSUMED"
+  },
+  "err_before": {
+   "value": 0.02,
+   "source": "ASSUMED; measure in shadow pilot"
+  },
+  "err_after": {
+   "value": 0.005,
+   "source": "ASSUMED; seeded-error eval 6/6 caught, no real-volume data"
+  },
+  "cost_per_error": {
+   "value": 2000000,
+   "source": "ASSUMED"
+  },
+  "fx": {
+   "value": 26000,
+   "source": "ASSUMED"
+  },
+  "fixed_month": {
+   "value": 60000000,
+   "source": "ASSUMED"
+  },
+  "one_off": {
+   "value": 900000000,
+   "source": "ASSUMED"
+  }
+ },
+ "base": {
+  "a_before": 600.0,
+  "a_after": 63.0,
+  "b_before": 400.0,
+  "b_after": 63.3,
+  "hours_saved": 873.7,
+  "fte_saved": 5.5,
+  "labour": 218416666.7,
+  "errors": 18000000.0,
+  "model": 201760.0,
+  "net_month": 176214906.7,
+  "net_12": 1214578880.0,
+  "payback": 5.1
+ },
+ "sensitivity": {
+  "auto_file_shares": [
+   0.2,
+   0.4,
+   0.6,
+   0.8
+  ],
+  "rows": [
+   {
+    "manual_min": "A 30 / B 3",
+    "net_12_mVND": [
+     -609,
+     -462,
+     -315,
+     -168
+    ]
+   },
+   {
+    "manual_min": "A 60 / B 6",
+    "net_12_mVND": [
+     891,
+     1038,
+     1185,
+     1332
+    ]
+   },
+   {
+    "manual_min": "A 120 / B 10",
+    "net_12_mVND": [
+     3491,
+     3638,
+     3785,
+     3932
+    ]
+   }
+  ]
+ },
+ "scenarios": [
+  {
+   "scenario": "Pessimistic: low automation, fast manual baseline",
+   "net_12_mVND": -536,
+   "payback_months": 29.7,
+   "fte_saved": 1.8
+  },
+  {
+   "scenario": "Base: measured automation discounted, assumed baseline",
+   "net_12_mVND": 1215,
+   "payback_months": 5.1,
+   "fte_saved": 5.5
+  },
+  {
+   "scenario": "Optimistic: high automation, slow manual baseline",
+   "net_12_mVND": 3968,
+   "payback_months": 2.2,
+   "fte_saved": 11.2
+  }
+ ],
+ "scale": [
+  {
+   "rollout": "Pilot: one credit team",
+   "hours_saved_month": 87,
+   "fte": 0.5,
+   "net_12_mVND": -977
+  },
+  {
+   "rollout": "One region (base volumes above)",
+   "hours_saved_month": 874,
+   "fte": 5.5,
+   "net_12_mVND": 1215
+  },
+  {
+   "rollout": "Bank-wide corporate + SME (ASSUMED 5x)",
+   "hours_saved_month": 4368,
+   "fte": 27.3,
+   "net_12_mVND": 11663
+  }
+ ]
+}

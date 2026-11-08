@@ -12,3 +12,4 @@ deploy/.env
 **/auth.json
 scripts/.login.log
 *.log
+slides/node_modules/

@@ -1,0 +1,59 @@
+[
+ {
+  "scenario": "baseline (no error)",
+  "expected": "auto_filed",
+  "decision": "auto_filed",
+  "confidence": 0.99,
+  "caught_by": []
+ },
+ {
+  "scenario": "one digit changed in total assets",
+  "expected": "review",
+  "decision": "review",
+  "confidence": 0.124,
+  "caught_by": [
+   "validator_failed: assets_eq_liab_equity[current]",
+   "validator_failed: current_plus_noncurrent[current]",
+   "validator_failed: text_support"
+  ]
+ },
+ {
+  "scenario": "unit differs between statement pages",
+  "expected": "review",
+  "decision": "review",
+  "confidence": 0.495,
+  "caught_by": [
+   "validator_failed: unit_consistent"
+  ]
+ },
+ {
+  "scenario": "fabricated total assets (prior)",
+  "expected": "review",
+  "decision": "review",
+  "confidence": 0.124,
+  "caught_by": [
+   "validator_failed: assets_eq_liab_equity[prior]",
+   "validator_failed: current_plus_noncurrent[prior]",
+   "validator_failed: text_support"
+  ]
+ },
+ {
+  "scenario": "fabricated NON-critical line item",
+  "expected": "review",
+  "decision": "review",
+  "confidence": 0.247,
+  "caught_by": [
+   "validator_failed: cash_ties_to_balance_sheet[current]",
+   "validator_failed: text_support"
+  ]
+ },
+ {
+  "scenario": "kill switch on, clean document",
+  "expected": "review",
+  "decision": "review",
+  "confidence": 0.99,
+  "caught_by": [
+   "kill switch active"
+  ]
+ }
+]
