@@ -8,6 +8,10 @@
   ocr <pdf|image> [--force-llm] [--out file.md]   full-text OCR via the vision model
   kb sync [doc_id|all] | kb status | kb tree | kb search "<q>"   OpenViking knowledge base
   serve [--port 8800]         web UI
+  monitor [--watch]           metrics + alerts (thresholds: monitoring in config)
+  rollback <doc_id> [--version N] --actor NAME     restore an earlier filed version
+  rollback --release 0.3 --actor NAME              bulk: undo everything filed by a bad pipeline version
+  history <doc_id>            list filed versions of a document
 """
 import argparse
 import json
@@ -48,6 +52,16 @@ def main(argv=None):
     sv = sub.add_parser("serve", help="web UI + API")
     sv.add_argument("--host", default="127.0.0.1")
     sv.add_argument("--port", type=int, default=8800)
+    mo = sub.add_parser("monitor", help="compute metrics, fire/resolve alerts")
+    mo.add_argument("--watch", action="store_true", help="keep checking every monitoring.check_interval_minutes")
+    rb = sub.add_parser("rollback", help="restore an earlier filed version (per document or per release)")
+    rb.add_argument("doc_id", nargs="?")
+    rb.add_argument("--version", type=int)
+    rb.add_argument("--release", help="pipeline version to undo across all documents")
+    rb.add_argument("--actor", default="")
+    rb.add_argument("--reason", default="")
+    hi = sub.add_parser("history", help="filed versions of a document")
+    hi.add_argument("doc_id")
     a = ap.parse_args(argv)
     cfg = config.load(a.config)
     out = Path(cfg.paths.out)
@@ -56,6 +70,44 @@ def main(argv=None):
         import uvicorn
         from .web.app import create_app
         uvicorn.run(create_app(cfg), host=a.host, port=a.port)
+        return
+    if a.cmd == "monitor":
+        from . import monitor
+        sys.stdout.reconfigure(encoding="utf-8")
+        if a.watch:
+            monitor.watch(cfg)
+            return
+        r = monitor.check(cfg)
+        print(json.dumps(r["metrics"], indent=1))
+        for al in r["active"]:
+            print(f"ALERT [{al['severity']}] {al['rule']}: {al['message']} (value {al['value']}, threshold {al['threshold']}, since {al['since']})")
+        for t in r["transitions"]:
+            print(f"-> {t['state']}: {t['rule']}")
+        if not r["active"]:
+            print("no active alerts")
+        return
+    if a.cmd == "history":
+        sys.stdout.reconfigure(encoding="utf-8")
+        for h in filing.Store(out).history(a.doc_id):
+            print(f"v{h['version']}  {h['snapshot_ts']}  pipeline {h['pipeline_version']}  {h['decision']}  {h['folder']}  ({h['reason']})")
+        return
+    if a.cmd == "rollback":
+        from . import pipeline
+        if not a.actor:
+            sys.exit("rollback needs --actor (it is written to the audit log)")
+        try:
+            if a.release:
+                for r in pipeline.rollback_release(a.release, cfg, actor=a.actor, reason=a.reason):
+                    print(r["doc_id"], r["status"], r.get("restored_version", ""), r.get("pipeline_version", ""))
+            elif a.doc_id:
+                r = pipeline.rollback(a.doc_id, cfg, a.version, actor=a.actor, reason=a.reason)
+                print(f"restored {a.doc_id} v{r['restored_version']} (pipeline {r['pipeline_version']}) -> {r['path']}")
+                if r.get("kb"):
+                    print("kb:", r["kb"].get("ov_status"), r["kb"].get("ov_uri", ""))
+            else:
+                sys.exit("rollback needs <doc_id> or --release VERSION")
+        except ValueError as e:
+            sys.exit(str(e))
         return
     if a.cmd == "ocr":
         import pymupdf

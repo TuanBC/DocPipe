@@ -73,3 +73,18 @@ kb:
     root: viking://resources/docpipe
     auto_ingest: true             # push every filed document into OpenViking, mirroring the folder layout
     timeout: 600
+
+monitoring:                       # alerts computed from the audit log / review queue (docpipe monitor, web System tab)
+  window_hours: 24                # metrics window
+  check_interval_minutes: 10      # the web app re-checks on this interval
+  webhook_url: null               # e.g. a Teams/Slack incoming webhook; alerts always go to <out>/alerts.jsonl too
+  review_queue_max: 20            # open review tickets
+  review_oldest_hours_max: 24     # age of the oldest open ticket
+  review_rate_max: 0.5            # share of documents routed to review
+  validator_failure_rate_max: 0.5 # share of documents with a failed validator (step change = new template / model change)
+  llm_invalid_rate_max: 0.2       # model replies failing the schema
+  model_error_docs_max: 0         # documents that hit a model error
+  cost_per_doc_max_usd: 0.10      # list-price cost per document
+  llm_p95_seconds_max: 90         # p95 seconds per model call
+  kb_sync_errors_max: 0           # failed OpenViking publishes
+  corrected_after_autofile_max: 0 # auto-filed documents later corrected or rolled back: the quality alarm

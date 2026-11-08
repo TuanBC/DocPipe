@@ -19,7 +19,7 @@ import pymupdf
 from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Response
 
-from .. import filing, kb, llm, ocr, pipeline, qa
+from .. import filing, kb, llm, monitor, ocr, pipeline, qa
 from ..ov_adapter import OpenViking, OVError
 
 STATIC = Path(__file__).parent / "static"
@@ -78,6 +78,10 @@ def create_app(cfg) -> FastAPI:
     ocr_only.mkdir(parents=True, exist_ok=True)
     jobs = Jobs()
     app = FastAPI(title="docpipe", version=filing.PIPELINE_VERSION)
+    # alerts: re-check on the configured interval for as long as the server runs (no external scheduler needed)
+    stop_monitor = threading.Event()
+    threading.Thread(target=monitor.watch, args=(cfg, stop_monitor), daemon=True, name="docpipe-monitor").start()
+    app.state.stop_monitor = stop_monitor
 
     def ov():
         return OpenViking.from_cfg(cfg)
@@ -150,6 +154,7 @@ def create_app(cfg) -> FastAPI:
             "auto_file_threshold": cfg.governance.auto_file_threshold, "pii_detector": cfg.pii.detector,
             "taxonomy": cfg.taxonomy.doc_types, "ocr": vars(cfg.ocr),
             "kill_switch": store.killed(cfg),
+            "alerts": monitor.active(cfg),
             "services": {
                 "openviking": {"ok": o.get("ok", False), "detail": o.get("version") or o.get("error")},
                 "litellm_gateway": {"ok": probe("http://127.0.0.1:4010/health/liveliness"),
@@ -290,6 +295,31 @@ def create_app(cfg) -> FastAPI:
         src = Path(rec["state"].get("source") or rec["pdf"])
         return jobs.submit("pipeline", f"Re-run {rec['result'].get('source_file')}",
                            lambda: _slim(pipeline.process(src, cfg, force=True)), doc_id)
+
+    @app.get("/api/documents/{doc_id}/history")
+    def doc_history(doc_id: str):
+        need(doc_id)
+        return store.history(doc_id)
+
+    @app.post("/api/documents/{doc_id}/rollback")
+    def doc_rollback(doc_id: str, payload: dict = Body(...)):
+        need(doc_id)
+        actor, reason = str(payload.get("actor", "")).strip(), str(payload.get("reason", "")).strip()
+        version = payload.get("version")
+        if not actor:
+            raise HTTPException(400, "actor (your name) is required: it goes into the audit log")
+        try:
+            version = int(version) if version is not None else None
+        except (TypeError, ValueError):
+            raise HTTPException(400, "version must be an integer")
+        return jobs.submit("rollback", f"Roll back {doc_id} to v{version or 'latest'}",
+                           lambda: pipeline.rollback(doc_id, cfg, version, actor=actor, reason=reason), doc_id)
+
+    # ---------- monitoring ----------
+    @app.get("/api/monitor")
+    def monitor_now():
+        r = monitor.check(cfg)
+        return {**r, "history": monitor.history(cfg, 30), "thresholds": monitor._cfg(cfg)}
 
     @app.get("/api/tree")
     def tree():

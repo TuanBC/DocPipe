@@ -188,6 +188,12 @@ a { color: var(--info); cursor: pointer; text-decoration: none; } a:hover { text
 <!-- SYSTEM -->
 <section class="view" id="v-system">
   <div class="card"><h2>Services</h2><div id="sys-svc"></div></div>
+  <div class="card"><h2>Monitoring &amp; alerts <button class="btn small" id="mon-check" style="float:right">Check now</button></h2>
+    <div id="mon-active"></div>
+    <div class="split" style="margin-top:10px"><div><h3>Metrics <span class="small muted" id="mon-window"></span></h3><div id="mon-metrics"></div></div>
+      <div><h3>Recent alert transitions</h3><div id="mon-hist"></div></div></div>
+    <p class="small muted">Computed from the audit log and review queue; thresholds are the <span class="mono">monitoring</span> section of config/pipeline.yaml. Transitions go to alerts.jsonl, the audit log and the webhook if one is set. The server re-checks on a timer.</p>
+  </div>
   <div class="card"><h2>Governance</h2>
     <div class="row"><label><input type="checkbox" id="kill"> Kill switch: send every new document to the review queue</label></div>
     <dl class="kv" id="sys-cfg" style="margin-top:14px"></dl>
@@ -233,7 +239,7 @@ function show(v) {
   if (v === "library") loadTree();
   if (v === "review") loadReview();
   if (v === "kb") loadKbTree();
-  if (v === "system") loadStatus(true);
+  if (v === "system") { loadStatus(true); loadMonitor(); }
   history.replaceState(null, "", "#" + v);
 }
 $$("#nav button").forEach(b => b.onclick = () => show(b.dataset.v));
@@ -246,7 +252,8 @@ async function loadStatus(render) {
   const s = status.services;
   $("#svc").innerHTML = [["OpenViking", s.openviking], ["Gateway", s.litellm_gateway], ["Embeddings", s.embeddings]]
     .map(([n, x]) => `<span title="${esc(x.detail)}"><i class="dot ${x.ok ? "ok" : "bad"}"></i>${n}</span>`).join("")
-    + (status.kill_switch ? `<span class="tag bad">kill switch ON</span>` : "");
+    + (status.kill_switch ? `<span class="tag bad">kill switch ON</span>` : "")
+    + ((status.alerts || []).filter(a => a.severity !== "info").length ? `<a class="tag bad" onclick="show('system')" title="${esc(status.alerts.map(a => a.rule).join(", "))}">${status.alerts.filter(a => a.severity !== "info").length} alert(s)</a>` : "");
   if (render) {
     $("#sys-svc").innerHTML = `<table><tr><th>Service</th><th>State</th><th>Detail</th></tr>` +
       Object.entries(s).map(([k, x]) => `<tr><td>${esc(k)}</td><td>${x.ok ? '<span class="tag ok">up</span>' : '<span class="tag bad">down</span>'}</td><td class="small muted">${esc(x.detail)}</td></tr>`).join("") + `</table>
@@ -259,6 +266,20 @@ async function loadStatus(render) {
     $("#sys-cfg").innerHTML = c.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("");
   }
 }
+const MON_LABELS = { documents: "Documents processed", auto_filed: "Auto-filed", review_rate: "Review rate", validator_failure_rate: "Validator failure rate",
+  model_error_docs: "Docs with model errors", review_queue_size: "Open review tickets", review_oldest_hours: "Oldest ticket (h)", llm_calls: "Model calls",
+  llm_invalid_rate: "Schema-invalid replies", llm_p50_seconds: "Call latency p50 (s)", llm_p95_seconds: "Call latency p95 (s)", cost_per_doc_usd: "Cost / document (USD, list)",
+  kb_sync_errors: "KB publish errors", corrected_after_autofile: "Auto-filed then corrected", kill_switch: "Kill switch" };
+async function loadMonitor() {
+  let m; try { m = await api("/api/monitor"); } catch (e) { $("#mon-active").innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
+  const sev = { critical: "bad", warning: "warn", info: "info" };
+  $("#mon-active").innerHTML = m.active.length ? m.active.map(a => `<div class="check"><span class="tag ${sev[a.severity]}">${esc(a.severity)}</span><span><b>${esc(a.rule)}</b> ${esc(a.message)} <span class="muted small">value ${esc(a.value)} · threshold ${esc(a.threshold)} · since ${esc(a.since)}</span></span></div>`).join("")
+    : `<div class="check"><span class="tag ok">ok</span><span>No active alerts</span></div>`;
+  $("#mon-window").textContent = `(last ${m.metrics.window_hours} h, at ${m.metrics.at})`;
+  $("#mon-metrics").innerHTML = `<table>${Object.entries(MON_LABELS).map(([k, l]) => `<tr><td>${esc(l)}</td><td class="num">${esc(m.metrics[k])}</td></tr>`).join("")}</table>`;
+  $("#mon-hist").innerHTML = m.history.length ? `<table>${m.history.map(h => `<tr><td class="small mono">${esc(h.ts)}</td><td><span class="tag ${h.state === "firing" ? sev[h.severity] : "ok"}">${esc(h.state)}</span></td><td class="small">${esc(h.rule)}</td></tr>`).join("")}</table>` : `<div class="empty">none yet</div>`;
+}
+$("#mon-check").onclick = () => loadMonitor().then(() => toast("Checked"));
 $("#kill").onchange = async (e) => { await api("/api/kill", { json: { on: e.target.checked } }); toast(`Kill switch ${e.target.checked ? "on" : "off"}`); loadStatus(true); };
 
 // ---------- inbox ----------
@@ -397,7 +418,7 @@ async function openDoc(id, keepTab) {
     </dl>
     <div class="tabs" id="d-tabs">
       <button data-t="pages">Pages &amp; OCR</button><button data-t="extract">Extracted tables (${Object.keys(r.extraction || {}).length})</button>
-      <button data-t="checks">Checks (${(r.checks || []).length})</button><button data-t="json">Sidecar JSON</button></div>
+      <button data-t="checks">Checks (${(r.checks || []).length})</button><button data-t="versions">Versions</button><button data-t="json">Sidecar JSON</button></div>
     <div id="d-body"></div>`;
   $$("#d-tabs button").forEach(b => { b.classList.toggle("on", b.dataset.t === docState.tab); b.onclick = () => { docState.tab = b.dataset.t; $$("#d-tabs button").forEach(x => x.classList.toggle("on", x === b)); renderDocBody(d, checks); }; });
   if ($("#d-sync")) $("#d-sync").onclick = async () => { await api(`/api/kb/sync/${id}`, { method: "POST" }); toast("KB sync queued (see Inbox → Jobs)"); };
@@ -408,6 +429,21 @@ let ftCache = {};
 async function renderDocBody(d, checks) {
   const r = d.result, body = $("#d-body"), id = d.doc_id;
   if (docState.tab === "checks") { body.innerHTML = checks; return; }
+  if (docState.tab === "versions") {
+    const hs = await api(`/api/documents/${id}/history`).catch(() => []);
+    body.innerHTML = `<p class="small muted">Every time a filed document is replaced (re-run, correction, approval, rollback) the previous version is kept. Rolling back restores it to its folder, re-publishes it to the knowledge base and writes your name to the audit log.</p>` +
+      (hs.length ? `<table><tr><th>Version</th><th>Saved</th><th>Pipeline</th><th>Decision</th><th>Folder</th><th>Why saved</th><th></th></tr>` +
+        hs.slice().reverse().map(h => `<tr><td>v${esc(h.version)}</td><td class="small mono">${esc(h.snapshot_ts)}</td><td>${esc(h.pipeline_version)}</td><td>${decisionTag(h.decision)}</td><td class="small mono">${esc(h.folder)}</td><td class="small muted">${esc(h.reason)}</td>
+          <td>${d.status === "filed" ? `<button class="btn small" data-rb="${esc(h.version)}">Roll back to v${esc(h.version)}</button>` : ""}</td></tr>`).join("") + `</table>`
+        : `<div class="empty">No earlier versions yet: this is the first filed version.</div>`);
+    $$("[data-rb]", body).forEach(b => b.onclick = async () => {
+      const actor = prompt("Your name (written to the audit log):"); if (!actor) return;
+      const reason = prompt("Reason for the rollback:") || "";
+      try { await api(`/api/documents/${id}/rollback`, { json: { version: Number(b.dataset.rb), actor, reason } }); toast(`Rollback to v${b.dataset.rb} queued (see Inbox → Jobs)`); }
+      catch (e) { toast(e.message); }
+    });
+    return;
+  }
   if (docState.tab === "json") { body.innerHTML = `<pre class="text">${esc(JSON.stringify(r, null, 1))}</pre>`; return; }
   if (docState.tab === "extract") {
     const ex = r.extraction || {};

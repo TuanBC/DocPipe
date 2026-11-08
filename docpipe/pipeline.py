@@ -235,3 +235,48 @@ def correct(doc_id: str, page: int, label_contains: str, field: str, value: floa
     store.add_correction(doc_id, entry)
     audit.write(event="human_correction", doc_id=doc_id, **entry)
     return process(Path(item["source"]), cfg, force=True)
+
+
+def rollback(doc_id: str, cfg, version: int | None = None, actor: str = "", reason: str = "") -> dict:
+    """Restore an earlier filed version of a document (default: the latest snapshot), re-publish it to the KB and log
+    who did it. The version being replaced is snapshotted first, so the rollback is itself reversible."""
+    out = Path(cfg.paths.out)
+    store = filing.Store(out)
+    hist = store.history(doc_id)
+    if not hist:
+        raise ValueError(f"no earlier version of {doc_id} to roll back to")
+    version = version or hist[-1]["version"]
+    if version not in {h["version"] for h in hist}:
+        raise ValueError(f"version {version} not in history {[h['version'] for h in hist]}")
+    path = store.restore(doc_id, version)
+    restored = json.loads(path.read_text(encoding="utf-8"))
+    st = store.state(doc_id) or {}
+    (out / "_review" / f"{doc_id}.json").unlink(missing_ok=True)
+    store.set_state(doc_id, **{**st, "status": "filed", "path": str(path),
+                               "pipeline_version": restored.get("pipeline_version"), "rolled_back_to": version})
+    llm.AuditLog(out / "audit.jsonl").write(event="rollback", doc_id=doc_id, to_version=version, actor=actor,
+                                            reason=reason, restored_pipeline_version=restored.get("pipeline_version"))
+    res = {"doc_id": doc_id, "restored_version": version, "path": str(path),
+           "pipeline_version": restored.get("pipeline_version"), "decision": restored.get("decision")}
+    if _publishes(cfg):
+        res["kb"] = kb_sync(doc_id, cfg)
+    return res
+
+
+def rollback_release(bad_version: str, cfg, actor: str = "", reason: str = "") -> list:
+    """Bulk rollback after a bad release: every document currently filed by pipeline `bad_version` goes back to its
+    newest snapshot produced by a different pipeline version. Documents with no such snapshot are listed, not touched."""
+    out = Path(cfg.paths.out)
+    store = filing.Store(out)
+    report = []
+    for f in sorted((out / "_state").glob("*.json")):
+        st = json.loads(f.read_text(encoding="utf-8"))
+        if st.get("status") != "filed" or st.get("pipeline_version") != bad_version:
+            continue
+        good = [h for h in store.history(f.stem) if h.get("pipeline_version") != bad_version]
+        if not good:
+            report.append({"doc_id": f.stem, "status": "no_earlier_version"})
+            continue
+        r = rollback(f.stem, cfg, good[-1]["version"], actor=actor, reason=reason or f"release {bad_version} rolled back")
+        report.append({"doc_id": f.stem, "status": "rolled_back", **r})
+    return report
