@@ -1,0 +1,28 @@
+{
+  "service_name": "openviking-server",
+  "server": {
+    "host": "0.0.0.0",
+    "port": 1933,
+    "root_api_key": "CHANGEME-root-key"
+  },
+  "storage": {
+    "workspace": "./data",
+    "vectordb": {"name": "context", "backend": "local"},
+    "agfs": {"backend": "local"}
+  },
+  "embedding": {
+    "dense": {
+      "provider": "openai",
+      "api_base": "http://litellm:4000/v1",
+      "api_key": "CHANGEME-litellm-virtual-key",
+      "model": "embed",
+      "dimension": 384
+    }
+  },
+  "vlm": {
+    "provider": "openai",
+    "api_base": "http://litellm:4000/v1",
+    "api_key": "CHANGEME-litellm-virtual-key",
+    "model": "luna"
+  }
+}

@@ -1,0 +1,75 @@
+# docpipe configuration. Another team adopts the pipeline by editing this file only:
+# taxonomy, statement keywords, thresholds, model and PII policy.
+
+model:
+  name: chatgpt/gpt-6-luna        # any LiteLLM model id; swap for an in-bank endpoint via the gateway
+  api_base: null                  # set to the LiteLLM proxy URL to route through the gateway
+  retries: 2                      # schema-validation retries per call
+  render_dpi: 150
+  workers: 4                      # concurrent page extractions
+  store_raw_response: true        # audit log keeps the raw model output
+  # list price used for cost per document ($ per 1M tokens); the subscription route reports $0
+  price_in_per_m: 0.10
+  price_out_per_m: 0.50
+
+paths:
+  out: data/out
+
+taxonomy:                         # fixed taxonomy; anything else is routed to review
+  doc_types:
+    - financial_statements        # báo cáo tài chính
+    - annual_report               # báo cáo thường niên
+    - auditor_report              # báo cáo kiểm toán
+    - business_registration       # giấy chứng nhận đăng ký doanh nghiệp
+    - board_resolution            # nghị quyết / biên bản HĐQT, ĐHĐCĐ
+    - contract                    # hợp đồng
+    - invoice                     # hóa đơn
+    - tax_document                # tờ khai / quyết toán thuế
+    - bank_statement              # sao kê tài khoản
+    - collateral_document         # tài sản bảo đảm: GCN quyền sử dụng đất, đăng ký xe, định giá
+    - other
+  # doc types that must contain primary statements; without statement pages they go to review
+  statement_doc_types: [financial_statements]
+
+router:
+  min_numeric_tokens: 15          # a statement page must carry at least this many numbers
+  title_max_rel_pos: 0.6          # a statement title must appear in the first 60% of the page text
+  statement_keywords:
+    balance_sheet:
+      - BẢNG CÂN ĐỐI KẾ TOÁN
+      - BÁO CÁO TÌNH HÌNH TÀI CHÍNH
+    income_statement:
+      - BÁO CÁO KẾT QUẢ HOẠT ĐỘNG KINH DOANH
+      - BÁO CÁO KẾT QUẢ KINH DOANH
+      - BÁO CÁO LÃI HOẶC LỖ
+      - BÁO CÁO KẾT QUẢ HOẠT ĐỘNG         # bank format ("Báo cáo kết quả hoạt động hợp nhất")
+    cash_flow:
+      - BÁO CÁO LƯU CHUYỂN TIỀN TỆ
+  vlm_dpi: 60                     # low-res classification for pages without a text layer
+
+validators:
+  balance_tolerance: 2            # absolute tolerance (in statement units) for identities
+  max_unsupported: 0              # numbers not printed in the page text layer that are tolerated (0 = strict)
+  second_pass: auto               # auto = independent re-read of pages with no text layer; always | never
+
+governance:
+  auto_file_threshold: 0.90       # confidence below this goes to the review queue
+  kill_switch_file: KILL          # if this file exists in the out dir, nothing is auto-filed
+
+pii:
+  detector: regex                 # regex | luna | both
+  entities: [VN_CCCD, VN_CMND, VN_PHONE, EMAIL]   # regex detector entity types
+
+ocr:                              # full-text OCR: text-layer pages are read for free, image pages by the vision model
+  dpi: 150
+  max_llm_pages: 40               # cap on model-OCR pages per document (cost bound); the rest are marked skipped
+  kb_fulltext_max_chars: 60000    # full text added to the KB export for documents without statement tables
+
+kb:
+  backend: openviking             # local | openviking (OpenViking ranks documents, local BM25 picks the cited pages)
+  openviking:
+    url: http://127.0.0.1:1933
+    api_key: null                 # dev server runs without auth; set for a secured server (or DOCPIPE_OV_API_KEY)
+    root: viking://resources/docpipe
+    auto_ingest: true             # push every filed document into OpenViking, mirroring the folder layout
+    timeout: 600

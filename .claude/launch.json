@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "docpipe-web",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": ["-X", "utf8", "-m", "docpipe", "serve", "--port", "8800"],
+      "port": 8800
+    }
+  ]
+}

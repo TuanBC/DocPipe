@@ -1,0 +1,21 @@
+[project]
+name = "techcombank-ait"
+version = "0.1.0"
+requires-python = ">=3.14"
+dependencies = [
+    "pillow>=13.0.0",
+    "pymupdf>=2.1",
+    "python-pptx>=1.0.2",
+]
+
+[dependency-groups]
+gateway = [
+    "litellm[proxy]>=1.108.1",
+]
+kb = [
+    "fastembed",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

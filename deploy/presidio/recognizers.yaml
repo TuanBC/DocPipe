@@ -1,0 +1,23 @@
+# UNTESTED. Presidio ships no Vietnamese recognizers or NLP model (verified in its docs), so these are
+# regex recognizers with Vietnamese context words. The YAML schema and the NLP-engine settings for a
+# "vi" language need checking against the analyzer image you run; names and persons need a Vietnamese
+# NER model (see docs/architecture.md, privacy ladder L2).
+supported_languages: [vi]
+global_regex_flags: 26
+recognizers:
+  - name: VnCccdRecognizer
+    supported_language: vi
+    supported_entity: VN_CCCD
+    patterns:
+      - name: cccd_12_digits
+        regex: "(?<!\\d)\\d{12}(?!\\d)"
+        score: 0.3
+    context: [cccd, "căn cước", "số định danh"]
+  - name: VnPhoneRecognizer
+    supported_language: vi
+    supported_entity: VN_PHONE
+    patterns:
+      - name: vn_mobile
+        regex: "(?<![\\d.,])(?:\\+84|0)[35789](?:[ .-]?\\d){8}(?!\\d)"
+        score: 0.4
+    context: ["số điện thoại", sđt, zalo, "liên hệ"]

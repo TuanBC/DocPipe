@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+# runtime data: public PDFs, outputs, caches, KB workspaces, logs (regenerable)
+data/*
+# synthetic, fictional sample scans are small and useful for reviewers
+!data/samples/
+# local secrets / tokens
+.env
+deploy/.env
+**/auth.json
+scripts/.login.log
+*.log

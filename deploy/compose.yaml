@@ -1,0 +1,186 @@
+# UNTESTED: Podman/WSL does not start on the dev machine (WSL VM creation fails, 0x80072746),
+# so this file has never been brought up. Image names/flags come from the upstream docs read on
+# 2026-11-07 (Langfuse docker-compose.yml, LiteLLM, OpenViking, TEI, Presidio). Expect small fixes.
+#
+# Profiles:  core = litellm + embed + openviking      obs = Langfuse v4 stack      pii = Presidio (L1 guard)
+# Run:       podman compose --profile core --profile obs up -d     (or docker compose ...)
+# Secrets:   copy deploy/.env.example to deploy/.env and change every CHANGEME.
+
+name: docpipe
+
+services:
+  # ---------------------------------------------------------------- gateway
+  litellm-db:
+    profiles: [core]
+    image: docker.io/postgres:17
+    environment:
+      POSTGRES_USER: litellm
+      POSTGRES_PASSWORD: ${LITELLM_DB_PASSWORD:?set in deploy/.env}
+      POSTGRES_DB: litellm
+    volumes: [litellm_db:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U litellm"]
+      interval: 5s
+      retries: 10
+
+  litellm:
+    profiles: [core]
+    image: ghcr.io/berriai/litellm:main-stable
+    depends_on:
+      litellm-db: {condition: service_healthy}
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    ports: ["127.0.0.1:4000:4000"]
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?set in deploy/.env}
+      DATABASE_URL: postgresql://litellm:${LITELLM_DB_PASSWORD}@litellm-db:5432/litellm
+      CHATGPT_TOKEN_DIR: /tokens/chatgpt            # the proxy cannot do the device login; mount a signed-in auth.json
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      LANGFUSE_OTEL_HOST: http://langfuse-web:3000
+    volumes:
+      - ./litellm_config.compose.yaml:/app/config.yaml:ro
+      - ${CHATGPT_TOKEN_HOST_DIR:?host dir holding auth.json}:/tokens/chatgpt   # must be writable: refresh tokens rotate
+
+  embed:
+    profiles: [core]
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest
+    command: ["--model-id", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2", "--port", "8080"]
+    volumes: [embed_cache:/data]
+
+  openviking:
+    profiles: [core]
+    image: ghcr.io/volcengine/openviking:latest
+    command: ["--without-bot"]                      # the bot is not used; Hermes is the agent
+    ports: ["127.0.0.1:1933:1933"]
+    volumes:
+      - ./openviking:/app/.openviking               # holds ov.conf (see deploy/openviking/ov.conf.example) and data/
+    depends_on: [litellm, embed]
+
+  # ---------------------------------------------------------------- PII guard (L1)
+  presidio-analyzer:
+    profiles: [pii]
+    image: mcr.microsoft.com/presidio-analyzer:latest
+    environment:
+      RECOGNIZER_REGISTRY_CONF_FILE: /usr/bin/presidio-analyzer/conf/recognizers.yaml
+    volumes:
+      - ./presidio/recognizers.yaml:/usr/bin/presidio-analyzer/conf/recognizers.yaml:ro
+  presidio-anonymizer:
+    profiles: [pii]
+    image: mcr.microsoft.com/presidio-anonymizer:latest
+
+  # ---------------------------------------------------------------- Langfuse v4 (trimmed from upstream compose)
+  langfuse-worker:
+    profiles: [obs]
+    image: docker.langfuse.com/langfuse/langfuse-worker:${LANGFUSE_IMAGE_TAG:-4}
+    depends_on: &lf-deps
+      langfuse-postgres: {condition: service_healthy}
+      minio: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      clickhouse: {condition: service_healthy}
+    environment: &lf-env
+      NEXTAUTH_URL: http://localhost:3000
+      DATABASE_URL: postgresql://postgres:${LANGFUSE_PG_PASSWORD}@langfuse-postgres:5432/postgres
+      SALT: ${LANGFUSE_SALT}                         # CHANGEME
+      ENCRYPTION_KEY: ${LANGFUSE_ENCRYPTION_KEY}     # CHANGEME: openssl rand -hex 32
+      TELEMETRY_ENABLED: "false"
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}    # CHANGEME
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_PASSWORD}
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_MEDIA_UPLOAD_REGION: auto
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_PASSWORD}
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_AUTH: ${REDIS_PASSWORD}                  # CHANGEME
+
+  langfuse-web:
+    profiles: [obs]
+    image: docker.langfuse.com/langfuse/langfuse:${LANGFUSE_IMAGE_TAG:-4}
+    depends_on: *lf-deps
+    ports: ["3000:3000"]
+    environment:
+      <<: *lf-env
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET}   # CHANGEME
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://localhost:9090
+      LANGFUSE_INIT_ORG_ID: docpipe
+      LANGFUSE_INIT_ORG_NAME: docpipe
+      LANGFUSE_INIT_PROJECT_ID: docpipe
+      LANGFUSE_INIT_PROJECT_NAME: docpipe
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
+      LANGFUSE_INIT_USER_EMAIL: ${LANGFUSE_ADMIN_EMAIL:-admin@example.com}
+      LANGFUSE_INIT_USER_NAME: admin
+      LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_ADMIN_PASSWORD}   # CHANGEME
+
+  clickhouse:
+    profiles: [obs]
+    image: docker.io/clickhouse/clickhouse-server:26.3.62.3
+    user: "101:101"
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+    volumes: [lf_clickhouse_data:/var/lib/clickhouse, lf_clickhouse_logs:/var/log/clickhouse-server]
+    healthcheck:
+      test: wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    profiles: [obs]
+    image: cgr.dev/chainguard/minio
+    entrypoint: sh
+    command: -c 'mkdir -p /data/langfuse && minio server --address ":9000" --console-address ":9001" /data'
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD}
+    ports: ["9090:9000"]
+    volumes: [lf_minio_data:/data]
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    profiles: [obs]
+    image: docker.io/redis:7
+    command: --requirepass ${REDIS_PASSWORD} --maxmemory-policy noeviction
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 10s
+      retries: 10
+
+  langfuse-postgres:
+    profiles: [obs]
+    image: docker.io/postgres:17
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${LANGFUSE_PG_PASSWORD}
+      POSTGRES_DB: postgres
+    volumes: [lf_postgres_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      retries: 10
+
+volumes:
+  litellm_db:
+  embed_cache:
+  lf_postgres_data:
+  lf_clickhouse_data:
+  lf_clickhouse_logs:
+  lf_minio_data:

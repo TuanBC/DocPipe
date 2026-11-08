@@ -1,0 +1,38 @@
+# UNTESTED (see compose.yaml). Container-network variant of litellm_config.yaml with Langfuse tracing
+# and an optional Presidio PII guardrail (profile "pii").
+model_list:
+  - model_name: luna
+    model_info:
+      mode: responses
+    litellm_params:
+      model: chatgpt/gpt-6-luna
+  - model_name: embed
+    litellm_params:
+      model: openai/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+      api_base: http://embed:8080/v1
+      api_key: none
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+
+litellm_settings:
+  callbacks: ["langfuse_otel"]            # needs LANGFUSE_PUBLIC_KEY / SECRET_KEY / OTEL_HOST (set in compose.yaml)
+  # turn_off_message_logging: true        # production: do not store document content in Langfuse
+
+# PII guard L1. pre_call masks BEFORE the provider sees text; it cannot see page images (L3 closes that gap).
+# Known upstream issues at time of writing: streaming breaks restoration (litellm #49638),
+# one Presidio call at a time per proxy process (#47579). Use non-streaming; scale by processes.
+guardrails:
+  - guardrail_name: presidio-pii
+    litellm_params:
+      guardrail: presidio
+      mode: pre_call
+      default_on: false                   # opt in per request: "guardrails": ["presidio-pii"]
+      output_parse_pii: true
+      presidio_language: vi
+      presidio_analyzer_api_base: http://presidio-analyzer:3000
+      presidio_anonymizer_api_base: http://presidio-anonymizer:3000
+      pii_entities_config:
+        VN_CCCD: MASK
+        VN_PHONE: MASK
+        EMAIL_ADDRESS: MASK

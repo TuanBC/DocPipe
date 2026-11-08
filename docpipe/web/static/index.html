@@ -1,0 +1,563 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>docpipe</title>
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f1f3f6; --line: #e2e5ea; --text: #1b1f24; --muted: #66707c;
+  --accent: #0b6e4f; --accent-soft: #e3f2ec; --warn: #9a5b00; --warn-soft: #fdf1dc; --bad: #b42318; --bad-soft: #fde8e6;
+  --info: #1d4ed8; --info-soft: #e5edff; --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+  --radius: 8px; --shadow: 0 1px 2px rgba(16,24,40,.06);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1216; --panel: #161a20; --panel-2: #1d222a; --line: #2a313b; --text: #e6e9ee; --muted: #9aa4b1;
+    --accent: #3ccf91; --accent-soft: #123327; --warn: #f0b252; --warn-soft: #3a2a0f; --bad: #ff7b6e; --bad-soft: #3b1714;
+    --info: #8ab4ff; --info-soft: #172443; --shadow: none;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, "Segoe UI", Roboto, sans-serif; }
+header { display: flex; align-items: center; gap: 16px; padding: 10px 20px; background: var(--panel); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; flex-wrap: wrap; }
+header h1 { font-size: 16px; margin: 0; letter-spacing: .2px; }
+header h1 span { color: var(--muted); font-weight: 400; }
+nav { display: flex; gap: 4px; flex-wrap: wrap; }
+nav button { background: none; border: 0; padding: 7px 12px; border-radius: 6px; color: var(--muted); font: inherit; cursor: pointer; }
+nav button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+nav button .n { margin-left: 6px; font-size: 11px; background: var(--panel-2); border-radius: 10px; padding: 1px 7px; color: var(--text); }
+.svc { margin-left: auto; display: flex; gap: 12px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; background: var(--muted); vertical-align: 1px; }
+.dot.ok { background: var(--accent); } .dot.bad { background: var(--bad); }
+main { padding: 18px 20px 40px; max-width: 1500px; margin: 0 auto; }
+section.view { display: none; } section.view.on { display: block; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px; margin-bottom: 16px; }
+.card h2 { font-size: 14px; margin: 0 0 12px; }
+.card h3 { font-size: 13px; margin: 14px 0 8px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
+.row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.grid2 { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 16px; }
+@media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
+button.btn, .btn { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--text); padding: 6px 12px; border-radius: 6px; cursor: pointer; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+@media (prefers-color-scheme: dark) { .btn.primary { color: #06140e; } }
+.btn:disabled { opacity: .5; cursor: default; }
+.btn.small { padding: 3px 9px; font-size: 12px; }
+input[type=text], input[type=number], select, textarea { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 9px; }
+.drop { border: 2px dashed var(--line); border-radius: var(--radius); padding: 28px; text-align: center; color: var(--muted); cursor: pointer; transition: .15s; }
+.drop.hot { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.seg label { padding: 6px 12px; cursor: pointer; color: var(--muted); }
+.seg input { display: none; }
+.seg input:checked + span { color: var(--accent); font-weight: 600; }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 12px; color: var(--muted); font-weight: 600; }
+td.num { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--mono); font-size: 12.5px; }
+.tag { display: inline-block; font-size: 11.5px; padding: 1px 8px; border-radius: 10px; background: var(--panel-2); color: var(--muted); white-space: nowrap; }
+.tag.ok { background: var(--accent-soft); color: var(--accent); } .tag.warn { background: var(--warn-soft); color: var(--warn); }
+.tag.bad { background: var(--bad-soft); color: var(--bad); } .tag.info { background: var(--info-soft); color: var(--info); }
+.muted { color: var(--muted); } .mono { font-family: var(--mono); font-size: 12.5px; } .small { font-size: 12px; }
+.tree { font-size: 13.5px; user-select: none; }
+.tree details { margin-left: 12px; } .tree > details { margin-left: 0; }
+.tree summary { cursor: pointer; padding: 3px 4px; border-radius: 5px; list-style: none; }
+.tree summary::-webkit-details-marker { display: none; }
+.tree summary::before { content: "▸"; display: inline-block; width: 14px; color: var(--muted); }
+.tree details[open] > summary::before { content: "▾"; }
+.tree summary:hover, .tree .doc:hover { background: var(--panel-2); }
+.tree .doc { margin-left: 26px; padding: 3px 6px; border-radius: 5px; cursor: pointer; display: flex; gap: 6px; align-items: baseline; min-width: 0; }
+.tree .doc.sel { background: var(--accent-soft); }
+.tree .doc .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; font-size: 13px; }
+.kv dt { color: var(--muted); } .kv dd { margin: 0; word-break: break-word; }
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin: 14px 0 12px; flex-wrap: wrap; }
+.tabs button { background: none; border: 0; border-bottom: 2px solid transparent; padding: 7px 12px; font: inherit; color: var(--muted); cursor: pointer; }
+.tabs button.on { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+.pager { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+.pageimg { max-width: 100%; border: 1px solid var(--line); border-radius: 4px; background: #fff; display: block; }
+.split { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 14px; }
+@media (max-width: 1100px) { .split { grid-template-columns: 1fr; } }
+pre.text { white-space: pre-wrap; word-break: break-word; background: var(--panel-2); border-radius: 6px; padding: 12px; margin: 0; font-family: var(--mono); font-size: 12.5px; max-height: 75vh; overflow: auto; }
+.job { border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; margin-bottom: 8px; }
+.job .head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.job .ev { margin-top: 8px; max-height: 180px; overflow: auto; font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+.answer { font-size: 15px; padding: 12px 14px; border-left: 3px solid var(--accent); background: var(--panel-2); border-radius: 0 6px 6px 0; white-space: pre-wrap; }
+.answer.nf { border-left-color: var(--warn); }
+.empty { color: var(--muted); padding: 24px; text-align: center; }
+.check { display: flex; gap: 8px; align-items: baseline; padding: 3px 0; font-size: 13px; }
+.toast { position: fixed; bottom: 18px; right: 18px; background: var(--text); color: var(--bg); padding: 10px 14px; border-radius: 6px; opacity: 0; transition: .2s; pointer-events: none; max-width: 420px; z-index: 20; }
+.toast.on { opacity: .95; }
+a { color: var(--info); cursor: pointer; text-decoration: none; } a:hover { text-decoration: underline; }
+.spin { display: inline-block; width: 11px; height: 11px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: s 0.8s linear infinite; vertical-align: -1px; }
+@keyframes s { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<header>
+  <h1>docpipe <span>document filing · OCR · knowledge base</span></h1>
+  <nav id="nav">
+    <button data-v="inbox" class="on">Inbox</button>
+    <button data-v="library">Library <span class="n" id="n-filed">0</span></button>
+    <button data-v="review">Review <span class="n" id="n-review">0</span></button>
+    <button data-v="kb">Knowledge base</button>
+    <button data-v="system">System</button>
+  </nav>
+  <div class="svc" id="svc"></div>
+</header>
+
+<main>
+<!-- INBOX -->
+<section class="view on" id="v-inbox">
+  <div class="card">
+    <h2>Add documents</h2>
+    <div class="row" style="margin-bottom:12px">
+      <div class="seg">
+        <label><input type="radio" name="mode" value="pipeline" checked><span>Process &amp; file</span></label>
+        <label><input type="radio" name="mode" value="ocr"><span>OCR only</span></label>
+      </div>
+      <label class="small muted"><input type="checkbox" id="force"> re-run if already processed</label>
+      <span class="small muted" id="mode-help">Classify → OCR → extract &amp; validate → PII mask → file into folders → publish to OpenViking.</span>
+    </div>
+    <div class="drop" id="drop">Drop PDFs or images (PNG, JPG, TIFF…) here, or click to choose files
+      <input type="file" id="file" multiple accept=".pdf,.png,.jpg,.jpeg,.tif,.tiff,.bmp,.webp,.gif" hidden>
+    </div>
+  </div>
+  <div class="card">
+    <div class="row" style="justify-content:space-between"><h2 style="margin:0">Jobs</h2><span class="small muted">one job runs at a time; page work inside a job is parallel</span></div>
+    <div id="jobs" style="margin-top:12px"></div>
+  </div>
+  <div class="card" id="ocr-card" hidden>
+    <div class="row" style="justify-content:space-between"><h2 style="margin:0">OCR result <span class="muted small" id="ocr-title"></span></h2>
+      <button class="btn small" id="ocr-copy">Copy Markdown</button></div>
+    <pre class="text" id="ocr-text" style="margin-top:12px"></pre>
+  </div>
+</section>
+
+<!-- LIBRARY -->
+<section class="view" id="v-library">
+  <div class="grid2">
+    <div class="card" style="align-self:start">
+      <div class="row" style="justify-content:space-between;margin-bottom:8px"><h2 style="margin:0">Filed folders</h2>
+        <input type="text" id="lib-filter" placeholder="Filter…" style="width:140px"></div>
+      <div class="tree" id="tree"></div>
+    </div>
+    <div class="card" id="doc"><div class="empty">Select a document in the folder tree.</div></div>
+  </div>
+</section>
+
+<!-- REVIEW -->
+<section class="view" id="v-review">
+  <div class="card">
+    <h2>Review queue</h2>
+    <p class="small muted" style="margin-top:-6px">Documents the pipeline would not auto-file (failed checks, low confidence, type outside the taxonomy, kill switch). Nothing here is published to the knowledge base until approved.</p>
+    <div class="row" style="margin-bottom:10px"><label class="small">Reviewer name <input type="text" id="reviewer" placeholder="required to approve/correct"></label></div>
+    <div id="review"></div>
+  </div>
+</section>
+
+<!-- KB -->
+<section class="view" id="v-kb">
+  <div class="card">
+    <h2>Ask the knowledge base</h2>
+    <div class="row">
+      <input type="text" id="q" placeholder="e.g. Tổng tài sản của Vinamilk năm 2025? / Vốn điều lệ của An Phát?" style="flex:1;min-width:260px">
+      <select id="q-backend"><option value="openviking">OpenViking + page citations</option><option value="local">Local BM25 only</option></select>
+      <select id="q-clear"><option value="internal">clearance: internal</option><option value="restricted">clearance: restricted</option><option value="public">clearance: public</option></select>
+      <button class="btn primary" id="q-go">Ask</button>
+    </div>
+    <div id="answer" style="margin-top:14px"></div>
+  </div>
+  <div class="grid2">
+    <div class="card" style="align-self:start">
+      <div class="row" style="justify-content:space-between;margin-bottom:8px"><h2 style="margin:0">OpenViking tree</h2>
+        <span><button class="btn small" id="kb-reload">Reload</button> <button class="btn small" id="kb-syncall">Sync all</button></span></div>
+      <div class="small muted mono" id="kb-root" style="margin-bottom:8px"></div>
+      <div class="tree" id="kbtree"></div>
+    </div>
+    <div>
+      <div class="card">
+        <h2>Semantic search (OpenViking find)</h2>
+        <div class="row"><input type="text" id="find-q" placeholder="search the KB…" style="flex:1"><button class="btn" id="find-go">Search</button></div>
+        <div id="find-res" style="margin-top:12px"></div>
+      </div>
+      <div class="card"><h2>Node content <span class="muted small mono" id="kb-uri"></span></h2><pre class="text" id="kb-content">Click a node in the tree or a search hit.</pre></div>
+    </div>
+  </div>
+</section>
+
+<!-- SYSTEM -->
+<section class="view" id="v-system">
+  <div class="card"><h2>Services</h2><div id="sys-svc"></div></div>
+  <div class="card"><h2>Governance</h2>
+    <div class="row"><label><input type="checkbox" id="kill"> Kill switch: send every new document to the review queue</label></div>
+    <dl class="kv" id="sys-cfg" style="margin-top:14px"></dl>
+  </div>
+</section>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt = (v) => v == null ? "–" : (Number.isInteger(v) ? v.toLocaleString("vi-VN") : String(v));
+function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("on"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("on"), 3500); }
+async function api(path, opts = {}) {
+  const o = { ...opts };
+  if (o.json !== undefined) { o.method = o.method || "POST"; o.headers = { "Content-Type": "application/json" }; o.body = JSON.stringify(o.json); delete o.json; }
+  const r = await fetch(path, o);
+  const ct = r.headers.get("content-type") || "";
+  const body = ct.includes("json") ? await r.json() : await r.text();
+  if (!r.ok) throw new Error(typeof body === "string" ? body : (body.detail || JSON.stringify(body)));
+  return body;
+}
+const DT = { financial_statements: "Financial statements", annual_report: "Annual report", auditor_report: "Auditor report",
+  business_registration: "Business registration", board_resolution: "Board resolution", contract: "Contract", invoice: "Invoice",
+  tax_document: "Tax document", bank_statement: "Bank statement", collateral_document: "Collateral document", other: "Other" };
+function decisionTag(d) {
+  const m = { auto_filed: ["ok", "auto-filed"], human_approved: ["info", "approved"], human_corrected: ["info", "corrected"], review: ["warn", "review"] };
+  const [c, t] = m[d] || ["", d || "–"]; return `<span class="tag ${c}">${esc(t)}</span>`;
+}
+function kbTag(kb) {
+  if (!kb || !kb.ov_status) return `<span class="tag">not in KB</span>`;
+  const c = kb.ov_status === "ingested" ? "ok" : kb.ov_status === "error" ? "bad" : "warn";
+  return `<span class="tag ${c}" title="${esc((kb.ov_errors || []).join("; "))}">KB: ${esc(kb.ov_status)}</span>`;
+}
+
+// ---------- navigation ----------
+let view = "inbox";
+function show(v) {
+  view = v;
+  $$("#nav button").forEach(b => b.classList.toggle("on", b.dataset.v === v));
+  $$("section.view").forEach(s => s.classList.toggle("on", s.id === "v-" + v));
+  if (v === "library") loadTree();
+  if (v === "review") loadReview();
+  if (v === "kb") loadKbTree();
+  if (v === "system") loadStatus(true);
+  history.replaceState(null, "", "#" + v);
+}
+$$("#nav button").forEach(b => b.onclick = () => show(b.dataset.v));
+
+// ---------- status ----------
+let status = null;
+async function loadStatus(render) {
+  try { status = await api("/api/status"); } catch (e) { $("#svc").innerHTML = `<span><i class="dot bad"></i>API down</span>`; return; }
+  $("#n-filed").textContent = status.counts.filed; $("#n-review").textContent = status.counts.review;
+  const s = status.services;
+  $("#svc").innerHTML = [["OpenViking", s.openviking], ["Gateway", s.litellm_gateway], ["Embeddings", s.embeddings]]
+    .map(([n, x]) => `<span title="${esc(x.detail)}"><i class="dot ${x.ok ? "ok" : "bad"}"></i>${n}</span>`).join("")
+    + (status.kill_switch ? `<span class="tag bad">kill switch ON</span>` : "");
+  if (render) {
+    $("#sys-svc").innerHTML = `<table><tr><th>Service</th><th>State</th><th>Detail</th></tr>` +
+      Object.entries(s).map(([k, x]) => `<tr><td>${esc(k)}</td><td>${x.ok ? '<span class="tag ok">up</span>' : '<span class="tag bad">down</span>'}</td><td class="small muted">${esc(x.detail)}</td></tr>`).join("") + `</table>
+      <p class="small muted">Pipeline model calls go directly through LiteLLM (${esc(status.model)}). OpenViking needs the gateway (summaries) and the embedding endpoint; start commands are in README.md.</p>`;
+    $("#kill").checked = status.kill_switch;
+    const c = [["Model", status.model], ["Auto-file threshold", status.auto_file_threshold], ["PII detector", status.pii_detector],
+      ["KB backend", status.kb_backend], ["OpenViking", status.ov_url + "  →  " + status.ov_root], ["Auto-publish to KB", status.auto_ingest ? "yes" : "no"],
+      ["OCR", `dpi ${status.ocr.dpi}, max ${status.ocr.max_llm_pages} model pages/document`], ["Taxonomy", status.taxonomy.join(", ")],
+      ["Documents", `${status.counts.filed} filed, ${status.counts.review} in review, ${status.counts.in_kb} in KB`]];
+    $("#sys-cfg").innerHTML = c.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("");
+  }
+}
+$("#kill").onchange = async (e) => { await api("/api/kill", { json: { on: e.target.checked } }); toast(`Kill switch ${e.target.checked ? "on" : "off"}`); loadStatus(true); };
+
+// ---------- inbox ----------
+$$("input[name=mode]").forEach(r => r.onchange = () => {
+  $("#mode-help").textContent = r.value === "ocr" && r.checked
+    ? "Transcribe every page to Markdown (text layer for free, vision model for image pages). Nothing is filed."
+    : "Classify → OCR → extract & validate → PII mask → file into folders → publish to OpenViking.";
+});
+const drop = $("#drop"), fileIn = $("#file");
+drop.onclick = () => fileIn.click();
+fileIn.onchange = () => { upload(fileIn.files); fileIn.value = ""; };
+["dragenter", "dragover"].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.add("hot"); }));
+["dragleave", "drop"].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.remove("hot"); }));
+drop.addEventListener("drop", ev => upload(ev.dataTransfer.files));
+async function upload(files) {
+  if (!files || !files.length) return;
+  const fd = new FormData();
+  [...files].forEach(f => fd.append("files", f));
+  fd.append("mode", $("input[name=mode]:checked").value);
+  fd.append("force", $("#force").checked ? "true" : "false");
+  try { const js = await api("/api/upload", { method: "POST", body: fd }); toast(`${js.length} job(s) queued`); loadJobs(); }
+  catch (e) { toast("Upload failed: " + e.message); }
+}
+const openJobs = new Set();
+let lastJobsSig = "";
+async function loadJobs() {
+  let jobs; try { jobs = await api("/api/jobs"); } catch { return; }
+  const box = $("#jobs");
+  if (!jobs.length) { box.innerHTML = `<div class="empty">No jobs yet. Drop a file above.</div>`; return; }
+  const sig = JSON.stringify(jobs.map(j => [j.id, j.status])) + [...openJobs].join();
+  const changed = sig !== lastJobsSig; lastJobsSig = sig;
+  if (changed) {
+    box.innerHTML = jobs.map(j => {
+      const st = { queued: '<span class="tag">queued</span>', running: '<span class="tag info"><i class="spin"></i> running</span>',
+        done: '<span class="tag ok">done</span>', error: '<span class="tag bad">error</span>' }[j.status];
+      const r = j.result || {};
+      let res = "";
+      if (j.status === "done" && r.skipped) {
+        res = `<span class="muted small">already processed (${esc(r.status)}); tick “re-run” to process again</span> <a data-open="${esc(r.doc_id)}">open</a>`;
+      } else if (j.status === "done" && j.kind !== "ocr" && r.decision) {
+        const m = r.meta || {};
+        res = `${decisionTag(r.decision)} <span>${esc(m.company)}</span> <span class="tag">${esc(DT[m.doc_type] || m.doc_type)}</span>
+          <span class="muted small">conf ${esc(r.confidence)}</span> ${r.kb ? kbTag(r.kb) : ""}
+          <a data-open="${esc(r.doc_id)}">open</a>
+          ${(r.reasons || []).length ? `<div class="small" style="color:var(--warn);margin-top:4px">${r.reasons.map(esc).join("<br>")}</div>` : ""}`;
+      } else if (j.status === "done" && j.kind === "ocr") {
+        res = `<span class="small muted">${esc(r.summary.pages)} pages · ${esc(JSON.stringify(r.summary.by_source))} · ${esc(r.summary.chars)} chars</span> <a data-ocr="${esc(r.doc_id)}" data-title="${esc(j.label)}">view text</a>`;
+      } else if (j.status === "done" && j.kind === "kb_sync") {
+        res = `<span class="small mono">${esc(JSON.stringify(r.ov_status ? { status: r.ov_status, uri: r.ov_uri } : r).slice(0, 400))}</span>`;
+      } else if (j.status === "error") res = `<span class="small" style="color:var(--bad)">${esc(j.error)}</span>`;
+      return `<div class="job" data-id="${j.id}"><div class="head">${st}<b>${esc(j.label)}</b><span class="muted small">${esc(j.created.slice(11))}</span>
+        ${j.doc_id ? `<a class="small" data-ev="${j.id}">${openJobs.has(j.id) ? "hide" : "show"} log</a>` : ""}</div>
+        ${res ? `<div style="margin-top:6px">${res}</div>` : ""}<div class="ev" id="ev-${j.id}" ${openJobs.has(j.id) ? "" : "hidden"}></div></div>`;
+    }).join("");
+    loadStatus(view === "system");
+    if (view === "library") loadTree();
+  }
+  for (const id of openJobs) loadEvents(id);
+}
+async function loadEvents(id) {
+  const el = $("#ev-" + id); if (!el) return;
+  const evs = await api(`/api/jobs/${id}/events`).catch(() => []);
+  el.innerHTML = evs.map(e => {
+    const { ts, event, doc_id, ...rest } = e;
+    return `${esc((ts || "").slice(11))} <b>${esc(event)}</b> ${esc(JSON.stringify(rest).slice(0, 220))}`;
+  }).join("<br>") || "waiting…";
+  el.scrollTop = el.scrollHeight;
+}
+$("#jobs").addEventListener("click", async (e) => {
+  const a = e.target.closest("a"); if (!a) return;
+  if (a.dataset.ev) { const id = a.dataset.ev; openJobs.has(id) ? openJobs.delete(id) : openJobs.add(id); loadJobs(); }
+  if (a.dataset.open) openDoc(a.dataset.open);
+  if (a.dataset.ocr) { const t = await api("/api/ocr/" + a.dataset.ocr); $("#ocr-card").hidden = false; $("#ocr-title").textContent = a.dataset.title; $("#ocr-text").textContent = t; $("#ocr-card").scrollIntoView({ behavior: "smooth" }); }
+});
+$("#ocr-copy").onclick = () => navigator.clipboard.writeText($("#ocr-text").textContent).then(() => toast("Copied"));
+
+// ---------- library ----------
+let treeData = null, selDoc = null;
+async function loadTree() {
+  treeData = await api("/api/tree");
+  renderTree();
+  if (selDoc && !$("#doc").dataset.loaded) openDoc(selDoc, true);
+}
+function renderTree() {
+  const f = $("#lib-filter").value.trim().toLowerCase();
+  const match = (d) => !f || [d.company, d.source_file, d.doc_type, d.doc_id, d.fiscal_year].join(" ").toLowerCase().includes(f);
+  const count = (n) => n.docs.filter(match).length + n.children.reduce((a, c) => a + count(c), 0);
+  const docRow = (d) => `<div class="doc ${d.doc_id === selDoc ? "sel" : ""}" data-doc="${d.doc_id}" title="${esc(d.source_file)}">
+      📄 <span class="t">${esc(DT[d.doc_type] || d.doc_type)}</span><span class="muted small t">${esc(d.source_file)}</span></div>`;
+  const node = (n, depth) => {
+    if (!count(n)) return "";
+    return `<details ${depth < 2 || f ? "open" : ""}><summary>📁 ${esc(n.name)} <span class="muted small">${count(n)}</span></summary>
+      ${n.children.map(c => node(c, depth + 1)).join("")}${n.docs.filter(match).map(docRow).join("")}</details>`;
+  };
+  let html = treeData.tree.children.map(c => node(c, 0)).join("");
+  const rv = treeData.review.filter(match);
+  if (rv.length) html += `<details open><summary>⚠️ review queue <span class="muted small">${rv.length}</span></summary>${rv.map(docRow).join("")}</details>`;
+  $("#tree").innerHTML = html || `<div class="empty">No documents yet.</div>`;
+}
+$("#lib-filter").oninput = () => treeData && renderTree();
+$("#tree").addEventListener("click", e => { const d = e.target.closest("[data-doc]"); if (d) openDoc(d.dataset.doc); });
+
+let docState = { page: 1, tab: "pages" };
+async function openDoc(id, keepTab) {
+  if (view !== "library") { selDoc = id; if (!keepTab) docState = { page: 0, tab: "pages" }; $("#doc").dataset.loaded = ""; show("library"); return; }
+  selDoc = id; if (treeData) renderTree();
+  const d = await api("/api/documents/" + id).catch(e => { toast(e.message); return null; });
+  if (!d) return;
+  $("#doc").dataset.loaded = "1";
+  if (!keepTab || !docState.page) docState = { page: Number(Object.keys(d.result.statement_pages || {})[0] || 1), tab: keepTab ? docState.tab : "pages" };
+  const r = d.result, m = r.meta;
+  const checks = (r.checks || []).map(c => `<div class="check"><span class="tag ${c.status === "pass" ? "ok" : c.status === "fail" ? "bad" : ""}">${esc(c.status)}</span><span><b>${esc(c.name)}</b> <span class="muted small">${esc(c.detail)}</span></span></div>`).join("") || `<div class="muted small">no checks</div>`;
+  const ocrS = r.ocr ? Object.entries(r.ocr.by_source).map(([k, v]) => `${v} ${k.replace("_", " ")}`).join(", ") : "–";
+  $("#doc").innerHTML = `
+    <div class="row" style="justify-content:space-between;align-items:flex-start">
+      <div><div class="muted small mono">${esc(d.folder)}/</div><h2 style="font-size:17px;margin:4px 0 6px">${esc(m.company)}</h2>
+        <div class="row">${decisionTag(r.decision)}<span class="tag">${esc(DT[m.doc_type] || m.doc_type)}</span>
+        <span class="tag">${esc(m.fiscal_year || "year ?")} ${esc(m.period !== "unknown" ? m.period : "")}</span>
+        ${m.scope && m.scope !== "unknown" ? `<span class="tag">${esc(m.scope)}</span>` : ""}
+        <span class="tag ${r.sensitivity === "restricted" ? "bad" : ""}">${esc(r.sensitivity)}</span>${kbTag(d.kb)}</div></div>
+      <div class="row">
+        <a class="btn small" href="/api/documents/${id}/file" target="_blank">Open PDF</a>
+        ${d.status === "filed" ? `<button class="btn small" id="d-sync">Publish to KB</button>` : ""}
+        <button class="btn small" id="d-rerun">Re-run</button>
+      </div>
+    </div>
+    <dl class="kv" style="margin-top:12px">
+      <dt>Source</dt><dd>${esc(r.source_file)} <span class="muted small mono">${esc(id)}</span></dd>
+      <dt>Confidence</dt><dd>${esc(r.confidence)} <span class="muted small">(threshold ${status ? esc(status.auto_file_threshold) : ""})</span></dd>
+      <dt>Pages</dt><dd>${esc(r.total_pages)} total · ${Object.keys(r.statement_pages || {}).length} statement pages · OCR: ${esc(ocrS)}</dd>
+      <dt>PII</dt><dd>${r.pii.count ? `${esc(r.pii.count)} masked (${esc(r.pii.types.join(", "))}); mapping kept locally in _restricted/` : "none detected"}</dd>
+      <dt>Evidence</dt><dd class="small">${esc(m.evidence)}</dd>
+      ${d.kb && d.kb.ov_uri ? `<dt>KB location</dt><dd class="mono small">${esc(d.kb.ov_uri)}</dd>` : ""}
+      ${(r.reasons || []).length ? `<dt>Review reasons</dt><dd style="color:var(--warn)">${r.reasons.map(esc).join("<br>")}</dd>` : ""}
+      <dt>Usage</dt><dd class="small muted">${esc(r.usage.calls)} model calls · ${esc(r.usage.tokens_in)} in / ${esc(r.usage.tokens_out)} out tokens · ${esc(r.seconds)} s</dd>
+    </dl>
+    <div class="tabs" id="d-tabs">
+      <button data-t="pages">Pages &amp; OCR</button><button data-t="extract">Extracted tables (${Object.keys(r.extraction || {}).length})</button>
+      <button data-t="checks">Checks (${(r.checks || []).length})</button><button data-t="json">Sidecar JSON</button></div>
+    <div id="d-body"></div>`;
+  $$("#d-tabs button").forEach(b => { b.classList.toggle("on", b.dataset.t === docState.tab); b.onclick = () => { docState.tab = b.dataset.t; $$("#d-tabs button").forEach(x => x.classList.toggle("on", x === b)); renderDocBody(d, checks); }; });
+  if ($("#d-sync")) $("#d-sync").onclick = async () => { await api(`/api/kb/sync/${id}`, { method: "POST" }); toast("KB sync queued (see Inbox → Jobs)"); };
+  $("#d-rerun").onclick = async () => { await api(`/api/documents/${id}/rerun`, { method: "POST" }); delete ftCache[id]; toast("Re-run queued (see Inbox → Jobs)"); };
+  renderDocBody(d, checks);
+}
+let ftCache = {};
+async function renderDocBody(d, checks) {
+  const r = d.result, body = $("#d-body"), id = d.doc_id;
+  if (docState.tab === "checks") { body.innerHTML = checks; return; }
+  if (docState.tab === "json") { body.innerHTML = `<pre class="text">${esc(JSON.stringify(r, null, 1))}</pre>`; return; }
+  if (docState.tab === "extract") {
+    const ex = r.extraction || {};
+    body.innerHTML = Object.keys(ex).length ? Object.entries(ex).map(([p, e]) => `
+      <h3>Page ${esc(p)} · ${esc(e.page_type)} · unit ${esc(e.unit)} <a class="small" data-page="${esc(p)}">view page</a></h3>
+      <table><tr><th>Line item</th><th style="text-align:right">${esc(e.period_current)}</th><th style="text-align:right">${esc(e.period_prior)}</th></tr>
+      ${e.items.map(it => `<tr><td title="${esc(it.quote)}">${esc(it.label)}</td><td class="num">${fmt(it.current)}</td><td class="num">${fmt(it.prior)}</td></tr>`).join("")}</table>`).join("")
+      : `<div class="empty">No statement tables: this document type is filed from its OCR text.</div>`;
+    $$("[data-page]", body).forEach(a => a.onclick = () => { docState.page = Number(a.dataset.page); docState.tab = "pages"; $$("#d-tabs button").forEach(x => x.classList.toggle("on", x.dataset.t === "pages")); renderDocBody(d, checks); });
+    return;
+  }
+  // pages & OCR
+  if (!(id in ftCache)) ftCache[id] = d.has_fulltext ? await api(`/api/documents/${id}/fulltext`).catch(() => "") : "";
+  const ft = ftCache[id];
+  const sections = {}, heads = {};
+  ft.split(/^## Page /m).slice(1).forEach(s => {
+    const n = parseInt(s, 10); const nl = s.indexOf("\n");
+    heads[n] = (s.slice(0, nl).match(/\((.*)\)\s*$/) || [, ""])[1];
+    sections[n] = s.slice(nl + 1).trim();
+  });
+  const total = r.total_pages, p = Math.min(Math.max(1, docState.page || 1), total);
+  const sp = r.statement_pages || {};
+  body.innerHTML = `
+    <div class="pager">
+      <button class="btn small" id="pg-prev" ${p <= 1 ? "disabled" : ""}>‹ Prev</button>
+      <span>Page <input type="number" id="pg-n" value="${p}" min="1" max="${total}" style="width:70px"> of ${esc(total)}</span>
+      <button class="btn small" id="pg-next" ${p >= total ? "disabled" : ""}>Next ›</button>
+      ${sp[p] ? `<span class="tag info">${esc(sp[p])}</span>` : ""}
+      ${Object.keys(sp).length ? `<span class="small muted">statement pages: ${Object.keys(sp).map(n => `<a data-go="${esc(n)}">${esc(n)}</a>`).join(" ")}</span>` : ""}
+      <span style="margin-left:auto"><button class="btn small" id="pg-reocr" title="Transcribe this page with the vision model and re-run the document">Re-OCR page with model</button></span>
+    </div>
+    <div class="split">
+      <div><img class="pageimg" src="/api/documents/${id}/page/${p}.png?dpi=110" alt="page ${p}"></div>
+      <div><div class="small muted" style="margin-bottom:6px">Text: ${esc(heads[p] || "none")} · PII masked</div>
+        <pre class="text">${esc(sections[p] || (ft ? "(empty)" : "No full text stored for this document yet. Re-run it to generate OCR text."))}</pre></div>
+    </div>`;
+  const go = (n) => { docState.page = Math.min(Math.max(1, n), total); renderDocBody(d, checks); };
+  $("#pg-prev").onclick = () => go(p - 1); $("#pg-next").onclick = () => go(p + 1);
+  $("#pg-n").onchange = (e) => go(Number(e.target.value));
+  $$("[data-go]", body).forEach(a => a.onclick = () => go(Number(a.dataset.go)));
+  $("#pg-reocr").onclick = async () => { await api(`/api/documents/${id}/reocr`, { json: { page: p } }); delete ftCache[id]; toast(`Re-OCR of page ${p} queued (see Inbox → Jobs)`); };
+}
+
+// ---------- review ----------
+async function loadReview() {
+  const t = await api("/api/tree");
+  const items = t.review;
+  const box = $("#review");
+  if (!items.length) { box.innerHTML = `<div class="empty">The review queue is empty.</div>`; return; }
+  box.innerHTML = items.map(d => `
+    <div class="job">
+      <div class="head"><b>${esc(d.company)}</b><span class="tag">${esc(DT[d.doc_type] || d.doc_type)}</span><span class="tag">${esc(d.fiscal_year || "")}</span>
+        <span class="muted small">${esc(d.source_file)} · conf ${esc(d.confidence)}</span>
+        <span style="margin-left:auto"><a data-open="${esc(d.doc_id)}">inspect</a></span></div>
+      <div class="small" style="color:var(--warn);margin:6px 0">${(d.reasons || []).map(esc).join("<br>")}</div>
+      <div class="row">
+        <button class="btn small primary" data-approve="${esc(d.doc_id)}">Approve &amp; file</button>
+        <span class="small muted">or correct one value:</span>
+        <input type="number" placeholder="page" style="width:70px" data-f="page">
+        <input type="text" placeholder="line item label contains…" data-f="label">
+        <select data-f="field"><option value="current">current</option><option value="prior">prior</option></select>
+        <input type="number" placeholder="new value" data-f="value" style="width:130px">
+        <button class="btn small" data-correct="${esc(d.doc_id)}">Correct &amp; re-validate</button>
+      </div>
+    </div>`).join("");
+}
+$("#review").addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-approve],[data-correct],[data-open]"); if (!b) return;
+  if (b.dataset.open) return openDoc(b.dataset.open);
+  const reviewer = $("#reviewer").value.trim();
+  if (!reviewer) { toast("Enter your reviewer name first"); $("#reviewer").focus(); return; }
+  try {
+    if (b.dataset.approve) { await api(`/api/review/${b.dataset.approve}/approve`, { json: { reviewer } }); toast("Approval queued"); }
+    else {
+      const box = b.closest(".job"), v = (f) => $(`[data-f=${f}]`, box).value;
+      await api(`/api/review/${b.dataset.correct}/correct`, { json: { page: v("page"), label: v("label"), field: v("field"), value: v("value"), reviewer } });
+      toast("Correction queued: the document is re-validated");
+    }
+    setTimeout(loadReview, 3000);
+  } catch (err) { toast(err.message); }
+});
+
+// ---------- knowledge base ----------
+async function loadKbTree() {
+  if (status) $("#kb-root").textContent = status.ov_root;
+  const box = $("#kbtree");
+  box.innerHTML = `<span class="spin"></span>`;
+  let entries; try { entries = await api("/api/kb/tree"); } catch (e) { box.innerHTML = `<div class="empty">OpenViking unavailable: ${esc(e.message)}</div>`; return; }
+  const root = { children: {} };
+  for (const e of entries) {
+    let n = root; const parts = e.rel_path.split("/");
+    parts.forEach((p, i) => { n.children[p] = n.children[p] || { name: p, children: {}, uri: null, isDir: true }; n = n.children[p]; if (i === parts.length - 1) { n.uri = e.uri; n.isDir = e.isDir; } });
+  }
+  const render = (n, depth) => Object.values(n.children).sort((a, b) => a.name.localeCompare(b.name)).map(c => {
+    const kids = Object.keys(c.children).length;
+    const label = esc(c.name).replace(/__([0-9a-f]{16})$/, ' <span class="muted small mono">$1</span>');
+    if (!kids) return `<div class="doc" data-uri="${esc(c.uri)}">${c.isDir ? "📁" : "📄"} <span class="t">${label}</span></div>`;
+    return `<details ${depth < 2 ? "open" : ""}><summary data-uri="${esc(c.uri)}">📁 ${label}</summary>${render(c, depth + 1)}</details>`;
+  }).join("");
+  box.innerHTML = render(root, 0) || `<div class="empty">Nothing in OpenViking yet.</div>`;
+}
+async function readKb(uri) {
+  $("#kb-uri").textContent = uri; $("#kb-content").textContent = "loading…";
+  try { $("#kb-content").textContent = await api("/api/kb/read?uri=" + encodeURIComponent(uri)); } catch (e) { $("#kb-content").textContent = e.message; }
+}
+$("#kbtree").addEventListener("click", (e) => { const n = e.target.closest("[data-uri]"); if (n && n.dataset.uri && n.dataset.uri !== "null") readKb(n.dataset.uri); });
+$("#kb-reload").onclick = loadKbTree;
+$("#kb-syncall").onclick = async () => { await api("/api/kb/sync_all", { method: "POST" }); toast("Sync of all filed documents queued (see Inbox → Jobs)"); };
+$("#find-go").onclick = async () => {
+  const q = $("#find-q").value.trim(); if (!q) return;
+  $("#find-res").innerHTML = `<span class="spin"></span>`;
+  try {
+    const hits = await api("/api/kb/find", { json: { query: q, limit: 12 } });
+    $("#find-res").innerHTML = hits.length ? `<table><tr><th>Score</th><th>Node</th></tr>${hits.map(h => `<tr><td class="num">${h.score.toFixed(3)}</td>
+      <td><a data-uri="${esc(h.uri)}">${esc(h.uri.replace(status ? status.ov_root + "/" : "", ""))}</a>${h.doc_id ? ` <a class="small" data-open="${esc(h.doc_id)}">document</a>` : ""}</td></tr>`).join("")}</table>` : `<div class="empty">No hits.</div>`;
+  } catch (e) { $("#find-res").innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+};
+$("#find-q").onkeydown = (e) => { if (e.key === "Enter") $("#find-go").click(); };
+$("#find-res").addEventListener("click", (e) => { const a = e.target.closest("a"); if (!a) return; if (a.dataset.uri) readKb(a.dataset.uri); if (a.dataset.open) openDoc(a.dataset.open); });
+$("#q-go").onclick = async () => {
+  const q = $("#q").value.trim(); if (!q) return;
+  const box = $("#answer"); box.innerHTML = `<span class="spin"></span> retrieving and answering…`; $("#q-go").disabled = true;
+  try {
+    const r = await api("/api/ask", { json: { question: q, backend: $("#q-backend").value, clearance: $("#q-clear").value } });
+    const docName = (id) => r.docs[id] ? `${r.docs[id].company} · ${DT[r.docs[id].doc_type] || r.docs[id].doc_type} ${r.docs[id].fiscal_year || ""}` : id;
+    const warn = (r.invalid_citations.length || r.ungrounded_numbers.length)
+      ? `<div class="small" style="color:var(--bad);margin-top:8px">⚠ ${r.invalid_citations.length ? "citations not in retrieved text: " + esc(JSON.stringify(r.invalid_citations)) : ""} ${r.ungrounded_numbers.length ? "numbers not found in sources: " + esc(r.ungrounded_numbers.join(", ")) : ""}</div>` : "";
+    box.innerHTML = `<div class="answer ${r.not_found ? "nf" : ""}">${esc(r.answer)}</div>${warn}
+      <div class="small" style="margin-top:10px">${r.not_found ? '<span class="tag warn">not found in KB</span>' : ""}
+        ${r.citations.map(c => `<a data-cite="${esc(c.doc_id)}" data-page="${esc(c.page)}">[${esc(docName(c.doc_id))}, p.${esc(c.page)}]</a>`).join(" ")}</div>
+      <div class="small muted" style="margin-top:6px">retrieval: ${esc(r.retrieval.backend)}${r.retrieval.ov_docs ? " → documents " + r.retrieval.ov_docs.map(docName).map(esc).join(" | ") : ""}
+        · ${esc(r.usage.tokens_in)} tokens in · ${esc(r.usage.model_seconds)} s</div>`;
+  } catch (e) { box.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+  $("#q-go").disabled = false;
+};
+$("#q").onkeydown = (e) => { if (e.key === "Enter") $("#q-go").click(); };
+$("#answer").addEventListener("click", (e) => {
+  const a = e.target.closest("[data-cite]"); if (!a) return;
+  selDoc = a.dataset.cite; docState = { page: Number(a.dataset.page), tab: "pages" }; $("#doc").dataset.loaded = ""; show("library");
+});
+
+// ---------- boot ----------
+loadStatus(false);
+loadJobs();
+setInterval(loadJobs, 2000);
+setInterval(() => loadStatus(view === "system"), 10000);
+const VIEWS = ["inbox", "library", "review", "kb", "system"];
+const fromHash = () => { const h = location.hash.slice(1); if (VIEWS.includes(h) && h !== view) show(h); };
+window.addEventListener("hashchange", fromHash);
+fromHash();
+</script>
+</body>
+</html>

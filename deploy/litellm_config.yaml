@@ -1,0 +1,30 @@
+# LiteLLM gateway, native (no containers). Start (port 4010: 4000 is used by other tooling on this machine):
+#   $env:LITELLM_MASTER_KEY="sk-local-dev"
+#   uv run --group gateway litellm --config deploy/litellm_config.yaml --port 4010
+# Requires ~/.config/litellm/chatgpt/auth.json (see README) and an embedding server on :8081
+# (services/hash_embed_server.py for the memory-constrained dev machine, services/embed_server.py or TEI otherwise).
+model_list:
+  - model_name: luna                       # alias used by docpipe, OpenViking and Hermes
+    model_info:
+      mode: responses
+    litellm_params:
+      model: chatgpt/gpt-6-luna
+  - model_name: embed
+    litellm_params:
+      model: openai/text-embedding-3-small      # served by services/sdk_embed_server.py (Copilot via the SDK sign-in)
+      api_base: http://127.0.0.1:8081/v1
+      api_key: none
+
+litellm_settings:
+  # OpenViking's semantic processor sends temperature=0; gpt-6-luna (reasoning) rejects it, and every directory summary
+  # then failed silently ("[Directory overview is not generated]"), leaving search to match folder names only.
+  drop_params: true
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+
+# Notes
+# - chatgpt/ models have no price in LiteLLM's cost map, so spend is $0 and max_budget never triggers.
+#   Limit usage with rpm/tpm on virtual keys instead (needs a database), or at the master-key level here.
+# - Langfuse: add `litellm_settings: {callbacks: ["langfuse_otel"]}` plus LANGFUSE_PUBLIC_KEY,
+#   LANGFUSE_SECRET_KEY, LANGFUSE_OTEL_HOST once a Langfuse server is reachable (see deploy/compose.yaml).
