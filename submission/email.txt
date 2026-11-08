@@ -1,0 +1,20 @@
+Subject: [Expert Challenge] TuanBC – DocPipe
+
+Dear AI Transformation Division team,
+
+Please find my submission for the Expert Challenge below. DocPipe is governed document intake for corporate credit:
+a vision model reads scanned documents, deterministic checks and a human review queue decide what is trusted, and
+filed documents are published to a knowledge base that answers staff questions with page citations.
+
+1. Decision memo and business case: <link to 01_Decision_memo_and_business_case.pdf> and <link to business_case.xlsx>
+2. Working prototype: demo video <link to DocPipe_demo.mp4>; code repository with README <GitHub link>
+3. Architecture and evaluation: <link to 03_Architecture_and_evaluation.pdf>
+4. Automation and rollout plan: <link to 04_Automation_and_rollout_plan.pdf>
+5. AI log and reflection: <link to 05_AI_log_and_reflection.pdf>
+Presentation deck: <link to DocPipe_deck.pptx>
+
+All data used is public company filings or synthetic documents of fictional companies; no customer or confidential
+data was used.
+
+Best regards,
+TuanBC
