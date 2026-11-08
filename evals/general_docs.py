@@ -9,7 +9,8 @@ keeps the real knowledge base untouched), then compare with the labels:
     (the failure that matters);
   - cost (list price) and wall time per document.
 
-Run: uv run --group gateway python -m evals.general_docs   (writes data/eval/general_docs.json)
+Run: uv run --group gateway python -m evals.general_docs [--set FOLDER] [--out FOLDER] [--report FILE]
+Another team points --set at its own folder of samples plus a labels.json in the same format.
 """
 import json
 import re
@@ -60,6 +61,14 @@ def ocr_scores(pred: str, truth: str) -> dict:
 
 
 def main():
+    import argparse
+    global SET, OUT
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--set", default=str(SET), help="folder with the samples and labels.json")
+    ap.add_argument("--out", default=str(OUT), help="scratch output folder (wiped)")
+    ap.add_argument("--report", default="data/eval/general_docs.json")
+    a = ap.parse_args()
+    SET, OUT = Path(a.set), Path(a.out)
     cfg = config.load()
     cfg.paths.out = str(OUT)
     shutil.rmtree(OUT, ignore_errors=True)
@@ -119,7 +128,8 @@ def main():
                           for d in sorted({r["difficulty"] for r in rows})},
     }
     print(json.dumps(summary, indent=1, ensure_ascii=False))
-    Path("data/eval/general_docs.json").write_text(json.dumps({"summary": summary, "rows": rows}, ensure_ascii=False, indent=1),
+    Path(a.report).parent.mkdir(parents=True, exist_ok=True)
+    Path(a.report).write_text(json.dumps({"summary": summary, "rows": rows}, ensure_ascii=False, indent=1),
                                                    encoding="utf-8")
 
 

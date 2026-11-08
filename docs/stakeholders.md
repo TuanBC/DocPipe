@@ -2,7 +2,7 @@
 
 **Status of evidence: no real interview has been done.** Everything below is either a public source (cited, mostly
 vendor material with an incentive to inflate pain) or a simulated persona built from those sources. The brief asks for
-5+ people across 3+ roles; at least 2 real conversations are needed before submission. The interview guide is at the end.
+5+ people across 3+ roles; the plan, questions and a notes template are in `docs/interview-notes.md`.
 
 Evidence labels: **[Public]** cited source, **[Sim]** simulated persona (my inference from public sources, not a person).
 
