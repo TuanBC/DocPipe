@@ -16,3 +16,5 @@ slides/node_modules/
 slides/render/
 demo/
 docs/_print.html
+# demo video: large binary, shared separately (rebuild: scripts/record_demo.py + scripts/make_video.py)
+submission/*.mp4
