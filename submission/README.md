@@ -11,7 +11,7 @@ knowledge assistant). All data is public company filings or synthetic scans of f
 | 4 | Automation and rollout plan | `04_Automation_and_rollout_plan.pdf`: production-standard checklist (re-run, monitoring, alerts, kill switch, rollback), governance, what breaks if it is wrong, before / after, projection at scale, 3-month plan, adoption guide |
 | 5 | AI log and reflection (max 1 page) | `05_AI_log_and_reflection.pdf` (1 page) |
 | - | Presentation (15 min + 15 min discussion) | `DocPipe_deck.pptx` and `DocPipe_deck.pdf` (16 slides, speaker notes); live demo and live-change runbook in `../docs/demo-script.md` |
-| - | Stakeholders | `06_Stakeholders_and_interview_plan.pdf`: roles, conflicts, simulated personas (labelled), the interview plan and notes template |
+| - | Stakeholders | `06_Stakeholders_and_interview_plan.pdf`: cited desk research per role (needs, numbers, sources with quality labels), conflicts, personas synthesised from the sources, the interview plan and notes template |
 
 Headline results (small samples; see item 3 for the caveats):
 
@@ -21,5 +21,5 @@ Headline results (small samples; see item 3 for the caveats):
 - Cited Q&A: 31/31 answerable questions correct with a page citation, 6/6 unanswerable refused, no access-control leak.
 - 19 offline unit tests; monitoring fired a real alert; rollback drill re-published to the knowledge base.
 
-Open items, stated plainly: no real stakeholder interview has been held yet (plan and template ready); the manual
+Open items, stated plainly: no real stakeholder interview has been held yet (needs are synthesised from cited public sources; plan and template ready); the manual
 "before" times are assumptions until the pilot's week-1 timing; accuracy on real branch scans is unmeasured.

@@ -17,7 +17,7 @@ PACKS = [
     ("03_Architecture_and_evaluation.pdf", ["architecture.md", "eval-results.md"], "Architecture and evaluation"),
     ("04_Automation_and_rollout_plan.pdf", ["rollout-and-automation.md", "adoption-guide.md"], "Automation and rollout plan"),
     ("05_AI_log_and_reflection.pdf", ["ai-log.md"], "AI log and reflection"),
-    ("06_Stakeholders_and_interview_plan.pdf", ["stakeholders.md", "interview-notes.md"], "Stakeholders and interview plan"),
+    ("06_Stakeholders_and_interview_plan.pdf", ["stakeholder-research.md", "stakeholders.md", "interview-notes.md"], "Stakeholders and interview plan"),
 ]
 
 CSS = """

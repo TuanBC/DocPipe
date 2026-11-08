@@ -40,9 +40,12 @@ result is neither traceable nor searchable.*
 Conflicts that shape the design: **speed vs traceability** (every value carries its page, deterministic checks gate
 auto-filing); **capability vs data control** (hosted model only for public data; in-bank endpoint before pilot);
 **automation vs verification cost** (reviewers see only flagged documents, and the review rate is measured and
-alerted on). **Evidence status: no real interview has been held yet**; roles and conflicts come from public sources
-and simulated personas (`docs/stakeholders.md`). Five interviews across four roles are the first pilot gate; the
-interview guide and note template are ready (`docs/interview-notes.md`).
+alerted on). **Evidence status: no real interview has been held yet.** Until then, each role's needs come from
+cited desk research (`docs/stakeholder-research.md`): 70% of institutions lost clients to slow onboarding in 2025
+(Fenergo survey); manual spreading takes 2-6 analyst hours per borrower (vendor range); MB reports 75% less
+document-checking time with DocAI (bank's own claim); the Personal Data Protection Law (fines up to 5% of revenue for
+cross-border violations) and SBV Circular 53/2026 (risk classification, the bank stays responsible for vendor AI) set
+the compliance bar. Five interviews across four roles are the first pilot gate (`docs/interview-notes.md`).
 
 ## 3. Opportunity (12 months, estimate)
 

@@ -159,9 +159,9 @@ async function main() {
   });
   card(s, 7.0, 5.25, 5.7, 1.3, "FBF3E4");
   txt(s, [{ text: "Evidence status: ", options: { bold: true, color: WARN } },
-    { text: "no real interview yet. Roles come from public sources and labelled simulated personas. Five interviews across four roles are the first pilot gate (guide and template ready)." }],
+    { text: "no interview yet; needs are from cited desk research: 70% of financial institutions lost clients to slow onboarding (Fenergo 2025); spreads take 2-6 h (vendor range); PDPL fines up to 5% of revenue. Five interviews are the first pilot gate." }],
     { x: 7.2, y: 5.4, w: 5.3, h: 1.2, fontSize: 13 });
-  s.addNotes("Be upfront: the brief asks for five interviews and they have not happened. Say what you expect to hear and what would change the design, for example if operations cannot staff a review queue.");
+  s.addNotes("Sources for every number: docs/stakeholder-research.md (Fenergo 2025 survey, MB DocAI 75% claim, PDPL 91/2025, SBV Circular 53/2026). Be upfront: the brief asks for five interviews and they have not happened. Say what you expect to hear and what would change the design, for example if operations cannot staff a review queue.");
 
   // ===== 5. Options =====
   s = content("Five directions; the hybrid keeps trust in the bank's hands", "Frame");

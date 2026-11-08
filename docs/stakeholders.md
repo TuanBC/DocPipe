@@ -1,5 +1,7 @@
 # Stakeholder map and evidence
 
+> Cited desk research per role (needs, numbers, sources, quality labels) is in `docs/stakeholder-research.md`; it replaces the uncited parts below where they differ.
+
 **Status of evidence: no real interview has been done.** Everything below is either a public source (cited, mostly
 vendor material with an incentive to inflate pain) or a simulated persona built from those sources. The brief asks for
 5+ people across 3+ roles; the plan, questions and a notes template are in `docs/interview-notes.md`.
