@@ -4,7 +4,7 @@
 
 ![Python 3.14](https://img.shields.io/badge/python-3.14-3776AB?logo=python&logoColor=white)
 ![uv](https://img.shields.io/badge/packaged%20with-uv-6E56CF)
-![Tests](https://img.shields.io/badge/tests-19%20passing-2E7D32)
+![Tests](https://img.shields.io/badge/tests-24%20passing-2E7D32)
 ![Data](https://img.shields.io/badge/data-public%20%26%20synthetic%20only-555555)
 
 DocPipe is a working prototype built for the **Techcombank AI Transformation Expert Challenge 2026**
@@ -51,10 +51,14 @@ The full problem statement, options and business case are in the
   page", "does this company name really appear". Anything uncertain goes to a person.
 - **Answers questions with citations**: staff ask in Vietnamese and get an answer that links to the exact page, or a
   refusal when the documents don't say.
+- **Works with agents**: an **Agent** tab runs [Hermes Agent](https://github.com/NousResearch/hermes-agent) against the
+  same knowledge base over MCP, with read-only tools and a live trace of every call it makes.
 - **Stays governable**: every model call and decision is in an audit log; monitoring raises alerts; a kill switch sends
   everything to review; any filed version can be rolled back.
 
 ![Review queue: a menu outside the taxonomy and a scanned report whose two reads disagree](docs/img/ui-review.png)
+
+![Agent tab: Hermes Agent answers from OpenViking over MCP, with a live trace of each tool call](docs/img/ui-agent.png)
 
 ## How it works
 
@@ -118,6 +122,9 @@ Stop everything with `scripts/start_services.ps1 -Stop`.
 2. Watch the job log as the document is read, checked and filed.
 3. Open it in **Library** to see the page image next to the extracted text.
 4. Ask a question in **Knowledge base** and click the citation to open the source page.
+5. Ask the same question in **Agent** to watch Hermes Agent search and read OpenViking by itself
+   (needs [Hermes Agent](https://github.com/NousResearch/hermes-agent) installed; see
+   [development notes](docs/development-notes.md#hermes-agent-tab)).
 
 ## Results at a glance
 
@@ -154,12 +161,13 @@ Print-ready PDFs of all of the above are in [`submission/`](submission/README.md
 ```text
 docpipe/            the pipeline: OCR, classification, validators, filing, governance, KB adapters, CLI
   web/              FastAPI app and the single-page UI (port 8800)
+  hermes.py         bridge to Hermes Agent for the Agent tab (isolated profile, read-only OpenViking MCP)
 config/             pipeline.yaml: taxonomy, thresholds, model, KB, monitoring
 evals/              evaluation harnesses and the synthetic labelled set generator
   results/          key evaluation outputs
 tests/              offline unit tests
 data/samples/       small synthetic scans of fictional companies, for trying the app
-deploy/             LiteLLM and OpenViking configs; container files (written, not run)
+deploy/             LiteLLM, OpenViking and Hermes Agent configs; container files (written, not run)
 services/           embedding shim used by OpenViking
 scripts/            service start-up, sample generation, demo recording, PDF build
 model/              business-case workbook and the script that builds it
@@ -217,7 +225,7 @@ docpipe rollback --release 0.3 --actor NAME      # undo everything a bad release
 <summary><b>Tests and evaluations</b></summary>
 
 ```bash
-uv run --group gateway --with pytest pytest -q               # 19 offline unit tests
+uv run --group gateway --with pytest pytest -q               # 24 offline unit tests
 
 uv run python -m evals.make_eval_set                         # build the 16 synthetic labelled scans
 uv run --group gateway python -m evals.general_docs          # OCR accuracy, classification, filing decisions, cost
@@ -238,6 +246,7 @@ uv run --group gateway python -m evals.pii_eval              # personal-data det
 |---|---|
 | Pipeline, checks, filing, review queue, audit log, kill switch | Working |
 | Web UI, knowledge base (OpenViking), cited Q&A | Working |
+| Agent tab: Hermes Agent over OpenViking MCP (read-only tools) | Working; spot-checked, not part of the measured evaluation |
 | Monitoring, alerts, version history, rollback | Working |
 | Container deployment, Langfuse tracing, Presidio | Written, never run (containers would not start on the dev machine) |
 

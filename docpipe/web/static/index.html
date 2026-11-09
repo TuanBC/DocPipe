@@ -90,6 +90,16 @@ pre.text { white-space: pre-wrap; word-break: break-word; background: var(--pane
 a { color: var(--info); cursor: pointer; text-decoration: none; } a:hover { text-decoration: underline; }
 .spin { display: inline-block; width: 11px; height: 11px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: s 0.8s linear infinite; vertical-align: -1px; }
 @keyframes s { to { transform: rotate(360deg); } }
+.step { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; }
+.step .h { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+.step .n { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.step.meta { padding: 4px 10px; border-style: dashed; }
+.step.meta summary { cursor: pointer; list-style: none; } .step.meta summary::-webkit-details-marker { display: none; }
+.step.meta summary::after { content: "details"; font-size: 11px; color: var(--muted); margin-left: auto; }
+.step pre { margin: 6px 0 0; white-space: pre-wrap; word-break: break-word; font-family: var(--mono); font-size: 11.5px; color: var(--muted); max-height: 140px; overflow: auto; background: var(--panel-2); border-radius: 4px; padding: 6px 8px; }
+.answer code { font-family: var(--mono); font-size: 12.5px; background: var(--panel); border-radius: 4px; padding: 0 4px; }
+.chip { border: 1px solid var(--line); border-radius: 12px; padding: 2px 10px; cursor: pointer; color: var(--text); background: var(--panel); font: inherit; font-size: 12px; }
+.chip:hover { border-color: var(--accent); color: var(--accent); }
 </style>
 </head>
 <body>
@@ -100,6 +110,7 @@ a { color: var(--info); cursor: pointer; text-decoration: none; } a:hover { text
     <button data-v="library">Library <span class="n" id="n-filed">0</span></button>
     <button data-v="review">Review <span class="n" id="n-review">0</span></button>
     <button data-v="kb">Knowledge base</button>
+    <button data-v="agent">Agent</button>
     <button data-v="system">System</button>
   </nav>
   <div class="svc" id="svc"></div>
@@ -182,6 +193,26 @@ a { color: var(--info); cursor: pointer; text-decoration: none; } a:hover { text
       </div>
       <div class="card"><h2>Node content <span class="muted small mono" id="kb-uri"></span></h2><pre class="text" id="kb-content">Click a node in the tree or a search hit.</pre></div>
     </div>
+  </div>
+</section>
+
+<!-- AGENT -->
+<section class="view" id="v-agent">
+  <div class="card">
+    <div class="row" style="justify-content:space-between"><h2 style="margin:0">Ask the Hermes agent</h2><span id="ag-state"></span></div>
+    <p class="small muted" style="margin:6px 0 12px">Hermes Agent answers by calling OpenViking over MCP with <b>read-only</b> tools (find, search, read, list, tree, grep, glob). It decides what to search and read by itself.
+      Compare with <a onclick="show('kb')">Knowledge base</a>, where DocPipe's own retrieval picks the pages and checks the citations. Only published, PII-masked documents are visible to the agent.</p>
+    <div class="row">
+      <input type="text" id="ag-q" placeholder="e.g. Hợp đồng vay của Hưng Thịnh: số tiền, thời hạn, lãi suất?" style="flex:1;min-width:260px">
+      <button class="btn primary" id="ag-go">Ask agent</button>
+    </div>
+    <div class="row small" style="margin-top:8px" id="ag-examples"><span class="muted">Try:</span></div>
+  </div>
+  <div class="split">
+    <div class="card" style="align-self:start"><h2>Answer</h2><div id="ag-answer"><div class="empty">Ask a question to start.</div></div></div>
+    <div class="card" style="align-self:start"><h2>Agent trace <span class="small muted" id="ag-count"></span></h2>
+      <p class="small muted" style="margin-top:-6px">Every OpenViking tool the agent calls, live, with its input and a preview of the result.</p>
+      <div id="ag-trace"><div class="empty">No run yet.</div></div></div>
   </div>
 </section>
 
@@ -585,12 +616,79 @@ $("#answer").addEventListener("click", (e) => {
   selDoc = a.dataset.cite; docState = { page: Number(a.dataset.page), tab: "pages" }; $("#doc").dataset.loaded = ""; show("library");
 });
 
+// ---------- agent (Hermes over OpenViking MCP) ----------
+const AG_EXAMPLES = [
+  "Hợp đồng cho vay của Công ty Cổ phần Xây dựng Hưng Thịnh: số tiền vay, thời hạn và lãi suất là bao nhiêu?",
+  "Vốn điều lệ của Công ty Thương mại An Phát là bao nhiêu?",
+  "Tổng tài sản của Vinamilk tại 31/12/2025?",
+  "Lãi suất hợp đồng vay của Vietcombank với An Phát là bao nhiêu?",
+];
+$("#ag-examples").insertAdjacentHTML("beforeend", AG_EXAMPLES.map(q => `<button class="chip" data-q="${esc(q)}">${esc(q.length > 60 ? q.slice(0, 58) + "…" : q)}</button>`).join(""));
+$("#ag-examples").addEventListener("click", (e) => { const c = e.target.closest("[data-q]"); if (c) { $("#ag-q").value = c.dataset.q; $("#ag-go").click(); } });
+const TOOL_LABEL = { tool_search: "looks for tools", tool_describe: "reads tool docs" };
+function agTool(name) { return name.startsWith("mcp__openviking__") ? `OpenViking · ${name.slice(17)}` : (TOOL_LABEL[name] || name); }
+function agRender(text, docs) {   // escape, then light markdown + clickable viking:// URIs
+  let h = esc(text)
+    .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
+    .replace(/`([^`]+)`/g, "<code>$1</code>");
+  return h.replace(/viking:\/\/[^\s<>"'`)\],]+/g, (u) => {
+    const clean = u.replace(/[.;:]+$/, ""), d = (docs || {})[clean];
+    const label = d ? `${d.company} · ${DT[d.doc_type] || d.doc_type} ${d.fiscal_year || ""}` : clean.replace(status ? status.ov_root + "/" : "", "");
+    return `<a data-vuri="${esc(clean)}" ${d ? `data-doc="${esc(d.doc_id)}"` : ""} title="${esc(clean)}">${esc(label)}</a>` + u.slice(clean.length);
+  });
+}
+$("#ag-go").onclick = async () => {
+  const q = $("#ag-q").value.trim(); if (!q) return;
+  const ans = $("#ag-answer"), trace = $("#ag-trace");
+  $("#ag-go").disabled = true; $("#ag-state").innerHTML = `<span class="spin"></span> <span class="small muted">agent working…</span>`;
+  ans.innerHTML = `<div class="answer" id="ag-live"></div>`; trace.innerHTML = ""; $("#ag-count").textContent = "";
+  let live = "", steps = 0; const t0 = performance.now();
+  const add = (html) => { trace.insertAdjacentHTML("beforeend", html); };
+  try {
+    const r = await fetch("/api/agent/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: q }) });
+    if (!r.ok) throw new Error(await r.text());
+    const reader = r.body.getReader(), dec = new TextDecoder(); let buf = "";
+    for (;;) {
+      const { value, done } = await reader.read(); if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let i; while ((i = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1); if (!line) continue;
+        const ev = JSON.parse(line);
+        if (ev.type === "text") { live += ev.text; $("#ag-live").innerHTML = agRender(live); }
+        else if (ev.type === "tool") { steps++; $("#ag-count").textContent = `· ${steps} call${steps > 1 ? "s" : ""}`;
+          const head = `<span class="n">#${steps} · ${((performance.now() - t0) / 1000).toFixed(1)} s</span><span class="tag ${ev.name.startsWith("mcp__") ? "info" : ""}">${esc(agTool(ev.name))}</span>`;
+          const inp = `<pre>${esc(JSON.stringify(ev.input, null, 1))}</pre>`;
+          // OpenViking calls are shown open; Hermes's own housekeeping (finding tool docs) is collapsed to one line
+          add(ev.name.startsWith("mcp__") ? `<div class="step"><div class="h">${head}</div>${inp}</div>`
+            : `<div class="step meta"><details><summary class="h">${head}</summary>${inp}</details></div>`); }
+        else if (ev.type === "tool_result") { const last = trace.lastElementChild; if (last) (last.querySelector("details") || last).insertAdjacentHTML("beforeend", `<pre>→ ${esc(ev.output)}</pre>`); }
+        else if (ev.type === "error") { ans.insertAdjacentHTML("beforeend", `<div class="small" style="color:var(--bad);margin-top:8px">⚠ ${esc(ev.message)}</div>`); }
+        else if (ev.type === "done") {
+          const docs = ev.docs || {}, cited = ev.uris.length;
+          const mcp = ev.tools.filter(t => t.startsWith("mcp__")).length;
+          ans.innerHTML = `<div class="answer ${cited ? "" : "nf"}">${agRender(ev.answer, docs)}</div>
+            <div class="small" style="margin-top:10px">${cited ? ev.uris.map(u => docs[u] ? `<a data-vuri="${esc(u)}" data-doc="${esc(docs[u].doc_id)}">[${esc(docs[u].company)} · ${esc(DT[docs[u].doc_type] || docs[u].doc_type)}]</a>` : "").join(" ") : '<span class="tag warn">no source cited</span>'}</div>
+            <div class="small muted" style="margin-top:6px">Hermes Agent · ${mcp} OpenViking call${mcp === 1 ? "" : "s"} · ${esc(ev.seconds)} s · logged to the audit trail</div>`;
+        }
+      }
+    }
+    if (!trace.children.length) trace.innerHTML = `<div class="empty">The agent answered without calling a tool.</div>`;
+  } catch (e) { ans.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+  $("#ag-go").disabled = false; $("#ag-state").innerHTML = "";
+};
+$("#ag-q").onkeydown = (e) => { if (e.key === "Enter") $("#ag-go").click(); };
+$("#ag-answer").addEventListener("click", (e) => {
+  const a = e.target.closest("[data-vuri]"); if (!a) return;
+  if (a.dataset.doc) { selDoc = a.dataset.doc; docState = { page: 1, tab: "pages" }; $("#doc").dataset.loaded = ""; show("library"); }
+  else { show("kb"); readKb(a.dataset.vuri); }
+});
+
 // ---------- boot ----------
 loadStatus(false);
 loadJobs();
 setInterval(loadJobs, 2000);
 setInterval(() => loadStatus(view === "system"), 10000);
-const VIEWS = ["inbox", "library", "review", "kb", "system"];
+const VIEWS = ["inbox", "library", "review", "kb", "agent", "system"];
 const fromHash = () => { const h = location.hash.slice(1); if (VIEWS.includes(h) && h !== view) show(h); };
 window.addEventListener("hashchange", fromHash);
 fromHash();

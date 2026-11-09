@@ -198,9 +198,13 @@ Failure cases worth naming:
 
 ## 7b. Hermes agent
 
-Not run by me. The user reported testing Hermes with the OpenViking MCP server. The Hermes install on the dev machine
-(v0.22.2) uses its own config and a LiteLLM-style gateway on 127.0.0.1:4000; I did not modify it. The Q&A module here is the
-controlled equivalent (retrieval, citation, refusal, access filter) and the part that was measured.
+Now wired into the UI as the **Agent** tab (`docpipe/hermes.py`, Hermes v0.22.2, isolated `docpipe` profile,
+read-only OpenViking MCP tools, model through DocPipe's LiteLLM gateway). Spot checks only, not a measured evaluation:
+the Hưng Thịnh loan terms (12.500.000.000 đồng, 9 months, 8,2%/year) and An Phát's charter capital
+(45.000.000.000 đồng) were answered correctly with the right `viking://` citation in 35-41 s; an instruction to run a
+shell command, write a file and delete a folder was refused, and Hermes's own tool search confirmed no such tools were
+available. The Q&A module here remains the controlled path (page citations checked against retrieved text, numbers
+checked against sources, access filter) and the part that was measured. Details: `docs/development-notes.md`.
 
 ## 8. PII detection (`evals/pii_eval.py`)
 

@@ -1,0 +1,29 @@
+# Hermes Agent profile for DocPipe's "Agent" tab. docpipe/hermes.py copies this file to data/hermes/config.yaml and
+# runs Hermes with HERMES_HOME=data/hermes, so the user's own Hermes setup is never read or changed.
+#
+# The agent sees only OpenViking's read tools over MCP: it can search and read the published (PII-masked) documents,
+# but cannot write, delete, change ACLs or read stored credentials. No shell, browser, file or web tools are enabled
+# (the run passes -t mcp-openviking).
+
+model:
+  default: luna                       # LiteLLM alias in deploy/litellm_config.yaml
+  provider: custom
+  base_url: http://127.0.0.1:4010/v1  # DocPipe's LiteLLM gateway: same model route, cost and audit as the pipeline
+  api_key: sk-local-dev               # local dev master key (scripts/start_services.ps1 default), not a secret
+
+agent:
+  max_turns: 12
+
+mcp_servers:
+  openviking:
+    url: http://127.0.0.1:1933/mcp
+    timeout: 120
+    connect_timeout: 30
+    enabled: true
+    tools:
+      include: [find, search, read, list, tree, grep, glob]
+
+telemetry:
+  enabled: false
+
+_config_version: 51                   # Hermes v0.22 schema; without it the file is treated as legacy

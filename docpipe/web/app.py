@@ -17,9 +17,9 @@ from pathlib import Path
 import httpx
 import pymupdf
 from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Response, StreamingResponse
 
-from .. import filing, kb, llm, monitor, ocr, pipeline, qa
+from .. import filing, hermes, kb, llm, monitor, ocr, pipeline, qa
 from ..ov_adapter import OpenViking, OVError
 
 STATIC = Path(__file__).parent / "static"
@@ -160,6 +160,7 @@ def create_app(cfg) -> FastAPI:
                 "litellm_gateway": {"ok": probe("http://127.0.0.1:4010/health/liveliness"),
                                     "detail": "127.0.0.1:4010 (used by OpenViking summaries)"},
                 "embeddings": {"ok": probe("http://127.0.0.1:8081/health"), "detail": "127.0.0.1:8081 (used by OpenViking)"},
+                "hermes_agent": {k: v for k, v in hermes.status().items() if k in ("ok", "detail")},
             },
             "counts": {"filed": sum(r["status"] == "filed" for r in recs), "review": sum(r["status"] == "review" for r in recs),
                        "in_kb": sum(r["state"].get("ov_status", "").startswith("ingested") for r in recs),
@@ -413,5 +414,31 @@ def create_app(cfg) -> FastAPI:
         res["docs"] = {d: {k: names[d][k] for k in ("company", "doc_type", "fiscal_year", "source_file")}
                        for d in ids if d in names}
         return res
+
+    # ---------- agent (Hermes over OpenViking MCP) ----------
+    @app.get("/api/agent/status")
+    def agent_status():
+        return hermes.status()
+
+    @app.post("/api/agent/ask")
+    def agent_ask(question: str = Body(..., embed=True)):
+        """Stream the agent's run as NDJSON: text deltas, each OpenViking tool call and result, then the answer."""
+        if not question.strip() or len(question) > 2000:
+            raise HTTPException(400, "question must be 1-2000 characters")
+        names = {r["doc_id"]: summary(r) for r in all_records()}
+
+        def events():
+            for ev in hermes.ask(question, cfg.kb.openviking.root, out):
+                if ev["type"] == "done":     # attach readable names for cited documents (folder names end in the doc id)
+                    ev["docs"] = {}
+                    for u in ev["uris"]:
+                        m = re.search(r"([0-9a-f]{16})(?:/|$)", u)
+                        if m and m.group(1) in names:
+                            s = names[m.group(1)]
+                            ev["docs"][u] = {"doc_id": m.group(1), **{k: s[k] for k in ("company", "doc_type", "fiscal_year")}}
+                yield json.dumps(ev, ensure_ascii=False) + "\n"
+
+        return StreamingResponse(events(), media_type="application/x-ndjson",
+                                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
     return app
