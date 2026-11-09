@@ -11,6 +11,9 @@ DocPipe is a working prototype built for the **Techcombank AI Transformation Exp
 (Problem Bank #2, document processing, and #5, trusted knowledge assistant).
 A vision model reads each document; deterministic checks, a review queue and an audit trail decide what is trusted.
 
+**Live demo: [docpipe-demo.vercel.app](https://docpipe-demo.vercel.app)**, a read-only snapshot of the app
+([what it includes](#online-demo)).
+
 ![DocPipe library: a filed loan contract with the page image next to its OCR text](docs/img/ui-library.png)
 
 ---
@@ -93,6 +96,14 @@ More detail, including the three key design decisions and their trade-offs, is i
 
 ## Quick start
 
+### Online demo
+
+[docpipe-demo.vercel.app](https://docpipe-demo.vercel.app) is a read-only snapshot of the running app, taken on
+9 November 2026. You can browse every tab, open documents and their extracted text, walk the knowledge-base tree,
+and replay recorded answers for the suggested questions in **Knowledge base** and **Agent**. Uploads, approvals and
+new questions need the local stack below. Large public annual reports keep only their first pages, statement pages
+and cited pages. How it is built: [development notes](docs/development-notes.md#online-demo-snapshot).
+
 ### Prerequisites
 
 - Windows 10/11 (the start script is PowerShell; the Python code is cross-platform)
@@ -169,7 +180,7 @@ tests/              offline unit tests
 data/samples/       small synthetic scans of fictional companies, for trying the app
 deploy/             LiteLLM, OpenViking and Hermes Agent configs; container files (written, not run)
 services/           embedding shim used by OpenViking
-scripts/            service start-up, sample generation, demo recording, PDF build
+scripts/            service start-up, sample generation, demo recording, PDF build, online demo snapshot
 model/              business-case workbook and the script that builds it
 slides/             presentation source (slides/build.js) and the built deck
 docs/               memo, architecture, evaluation, rollout, stakeholders, AI log

@@ -21,3 +21,6 @@ submission/*.mp4
 # office lock files (deck open in LibreOffice / PowerPoint)
 .~lock.*#
 ~$*
+# static demo build (scripts/build_demo_site.py)
+dist/
+.vercel/

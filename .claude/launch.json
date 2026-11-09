@@ -4,8 +4,30 @@
     {
       "name": "docpipe-web",
       "runtimeExecutable": ".venv/Scripts/python.exe",
-      "runtimeArgs": ["-X", "utf8", "-m", "docpipe", "serve", "--port", "8800"],
+      "runtimeArgs": [
+        "-X",
+        "utf8",
+        "-m",
+        "docpipe",
+        "serve",
+        "--port",
+        "8800"
+      ],
       "port": 8800
+    },
+    {
+      "name": "vercel-demo",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8899",
+        "-d",
+        "dist/docpipe-demo",
+        "--bind",
+        "127.0.0.1"
+      ],
+      "port": 8899
     }
   ]
 }

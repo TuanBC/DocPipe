@@ -106,6 +106,30 @@ personal data masked.
 `_config_version` is treated as a legacy file and its MCP servers are ignored. The toolset is named after the server
 (`openviking`), not `mcp-openviking`.
 
+## Online demo snapshot
+
+[docpipe-demo.vercel.app](https://docpipe-demo.vercel.app) is a static, read-only copy of the UI, hosted on Vercel.
+Vercel cannot run the local stack (LiteLLM, OpenViking, Hermes, the job worker, `data/out`), so
+`scripts/build_demo_site.py` reads every view from a running UI and writes a static site to `dist/docpipe-demo/`:
+
+- every GET endpoint the UI uses, saved as JSON or text under `snap/`;
+- page images as WebP: all pages of short documents; for reports over 20 pages, the first 8 pages, the statement
+  pages and any page a saved answer cites;
+- PDFs up to 4 MB;
+- recorded answers for 3 Q&A questions and 4 Hermes Agent runs (the agent's event stream is replayed with its timing
+  compressed);
+- `scripts/demo_shim.js`, inlined into the page, which serves the UI's `/api/*` calls from those files, runs KB search
+  as a simple keyword match in the browser, and refuses every write with a message.
+
+Documents uploaded during testing that are personal or internal are listed in `EXCLUDE` and dropped from every view.
+`_restricted/` is never read; full text and KB content are the PII-masked versions.
+
+```bash
+# with the local services running
+uv run python scripts/build_demo_site.py --reuse-answers   # omit --reuse-answers to record new answers
+vercel deploy dist/docpipe-demo --prod
+```
+
 ## Output layout
 
 Everything is written under `data/out/` (git-ignored):
