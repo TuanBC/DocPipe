@@ -1,129 +1,281 @@
-# DocPipe: governed document intake for corporate credit
+# DocPipe
 
-Turns Vietnamese financial statements (BCTC) and annual reports into filed, validated, searchable knowledge.
-Expert Challenge 2026, Problem Bank #2 (document processing) + #5 (trusted knowledge).
-Public documents only; no customer data.
+**Turn the scans in a corporate credit file into filed, checked and searchable documents.**
 
+![Python 3.14](https://img.shields.io/badge/python-3.14-3776AB?logo=python&logoColor=white)
+![uv](https://img.shields.io/badge/packaged%20with-uv-6E56CF)
+![Tests](https://img.shields.io/badge/tests-19%20passing-2E7D32)
+![Data](https://img.shields.io/badge/data-public%20%26%20synthetic%20only-555555)
+
+DocPipe is a working prototype built for the **Techcombank AI Transformation Expert Challenge 2026**
+(Problem Bank #2, document processing, and #5, trusted knowledge assistant).
+A vision model reads each document; deterministic checks, a review queue and an audit trail decide what is trusted.
+
+![DocPipe library: a filed loan contract with the page image next to its OCR text](docs/img/ui-library.png)
+
+---
+
+## Contents
+
+- [Why DocPipe](#why-docpipe)
+- [What it does](#what-it-does)
+- [How it works](#how-it-works)
+- [Quick start](#quick-start)
+- [Results at a glance](#results-at-a-glance)
+- [Challenge deliverables](#challenge-deliverables)
+- [Project structure](#project-structure)
+- [Usage reference](#usage-reference)
+- [Status and limitations](#status-and-limitations)
+- [Data and privacy](#data-and-privacy)
+- [Adapting it to other documents](#adapting-it-to-other-documents)
+- [License and author](#license-and-author)
+
+## Why DocPipe
+
+A corporate credit file is a pile of documents: financial statements, business registrations, contracts, invoices,
+board resolutions, collateral papers. Most arrive as scans or phone photos. Today someone reads each one, renames it,
+files it in a shared drive and re-keys the numbers that matter.
+
+That costs hours per borrower, a keyed number cannot be traced back to its page, and finding the same document again
+means asking a colleague. DocPipe does the reading and filing, and keeps every value linked to its source.
+
+The full problem statement, options and business case are in the
+[decision memo](docs/decision-memo.md).
+
+## What it does
+
+- **Reads any document**: scanned PDFs, phone photos and text PDFs (pages with a text layer are read for free).
+- **Sorts and files it**: works out the type, the customer and the year, then files it under
+  `company / year / type` with a sidecar JSON of extracted fields.
+- **Checks before trusting**: balance-sheet identities, cross-statement tie-outs, "is this number really printed on the
+  page", "does this company name really appear". Anything uncertain goes to a person.
+- **Answers questions with citations**: staff ask in Vietnamese and get an answer that links to the exact page, or a
+  refusal when the documents don't say.
+- **Stays governable**: every model call and decision is in an audit log; monitoring raises alerts; a kill switch sends
+  everything to review; any filed version can be rolled back.
+
+![Review queue: a menu outside the taxonomy and a scanned report whose two reads disagree](docs/img/ui-review.png)
+
+## How it works
+
+```mermaid
+flowchart LR
+    A[Upload<br/>PDF, scan, photo] --> B[OCR<br/>text layer or vision model]
+    B --> C[Classify<br/>type, company, year]
+    C --> D{Deterministic<br/>checks pass?}
+    D -- yes --> E[Auto-file<br/>company/year/type]
+    D -- no --> F[Review queue<br/>a person approves or corrects]
+    F --> E
+    E --> G[Knowledge base<br/>OpenViking]
+    G --> H[Cited answers<br/>with access control]
 ```
-PDF / scan / photo -> page router -> full-text OCR (text layer free, vision model for image pages)
-         -> classify (taxonomy: statements, registrations, contracts, invoices, ...) -> Luna extraction for statement pages
-         -> validators (+ two-pass for scans; evidence + company checks for non-statement documents)
-         -> PII guard -> auto-file  filed/{company}/{year}/{period | doc_type}/  (+ sidecar JSON, masked KB export)
-                      or review queue (approve / correct in the UI or CLI)
-         -> OpenViking KB, same folder layout (semantic summaries + embeddings) -> cited Q&A with access filter
-Web UI (docpipe serve): inbox/jobs, folder library with page viewer + OCR text, review queue, KB tree/search/ask.
-```
 
-Submission pack (start here): [`submission/README.md`](submission/README.md).
-Documents: `docs/decision-memo.md`, `docs/architecture.md`, `docs/eval-results.md`, `docs/rollout-and-automation.md`,
-`docs/adoption-guide.md`, `docs/stakeholders.md`, `docs/interview-notes.md`, `docs/ai-log.md`, `docs/demo-script.md`;
-deck in `slides/DocPipe_deck.pptx` (built by `slides/build.js`); business case in `model/business_case.xlsx`
-(inputs tagged MEASURED / PUBLIC / ASSUMED).
+How a document is decided, step by step:
 
-## What runs and what does not
+1. **Route.** Statement pages are found by title keywords and numeric density; image-only pages get a cheap
+   low-resolution model call.
+2. **Read.** The vision model transcribes each page; statement pages also return line items with current and prior values.
+3. **Check.** Accounting identities, units, tie-outs between statements, and every number must appear in the page text.
+   Scans without a text layer get a second, independent read that must agree.
+4. **Score.** Each failed check halves the confidence.
+5. **Decide.** Below the threshold, outside the taxonomy, or kill switch on: the document goes to review.
+   Otherwise it is filed automatically.
+6. **Publish.** Only filed documents (automatic or approved) reach the knowledge base, with personal data masked.
 
-| Part | State |
-|---|---|
-| Router, extraction, validators (balance, income, cash flow, units, text-layer support, cross-statement), two-pass agreement for scans | Working, native Python |
-| PII guard (regex L1, Luna L0), filing, review queue, correction flow, kill switch, idempotent re-run, route/page cache, audit log | Working |
-| Full-text OCR via the vision model (`docpipe/ocr.py`): images and scanned PDFs, cached per page, capped per document; image uploads (PNG/JPG/TIFF…) | Working; verified on synthetic scanned registration certificate, 2-page contract and invoice photo (`scripts/make_samples.py`) |
-| Filing of non-statement documents (registration, contract, invoice, resolution, tax, bank statement, collateral) with deterministic evidence/company checks | Working |
-| OpenViking KB (`docpipe/ov_adapter.py`): auto-publish on filing/approval, folder layout mirrors `filed/`, re-filing moves the node; `OpenVikingKB` = OpenViking ranks documents, local index picks cited pages | Working: 8 documents published, summaries generated, Q&A cited from statements and scans |
-| Web UI + API (`docpipe/web/`, `docpipe serve`, port 8800) | Working; driven end to end in a browser (upload, live job log, library, review approve, KB ask with citations) |
-| KB: local backend (BM25, optional dense) with access filter; cited Q&A (`docpipe ask`) | Working. Dense uses GitHub Copilot `text-embedding-3-small` via LiteLLM (`DOCPIPE_DENSE=1 DOCPIPE_EMBED_MODEL=github_copilot/text-embedding-3-small`); the local ONNX model cannot load on the dev machine (memory). The ChatGPT/Codex route has no embeddings |
-| Monitoring + alerts (`docpipe/monitor.py`): metrics from the audit log, thresholds in config, alerts to `alerts.jsonl`, audit log, UI banner, webhook | Working; fired a real alert (stale review ticket) |
-| Version history + rollback (`_history/`, `docpipe rollback`, UI Versions tab), per document or per pipeline release | Working; rollback drill re-published to OpenViking |
-| Evaluation harnesses | Working; results in `docs/eval-results.md` (copies of key outputs in `evals/results/`) |
-| LiteLLM proxy, OpenViking server, embedding shim (`services/sdk_embed_server.py`, Copilot embeddings), run natively (no containers) | Start all with `scripts/start_services.ps1`. Fixed: OpenViking's semantic summaries had been failing silently (gateway rejected `temperature=0` for luna; `drop_params: true` in `deploy/litellm_config.yaml`), so earlier OpenViking search matched folder names only. Earlier run: gateway answered `docpipe ask`; 4 documents ingested into OpenViking with 1536-dim Copilot embeddings; retrieval compared (`docs/eval-results.md` 7d). Start commands in `deploy/litellm_config.yaml` and `deploy/openviking/ov.native.conf`. Slow startup; the `ov` CLI would not start alongside the server (paging file). Copilot route is a demo path, terms unreviewed |
-| Langfuse, Presidio, TEI embeddings, container compose (`deploy/compose.yaml`) | **Written, never run**: Podman/WSL does not start on the dev machine (`0x80072746`) |
-| Hermes agent over the KB | Not run by me (user reports it works with the OpenViking MCP server) |
-| Langfuse tracing | Wired through LiteLLM metadata + env switch; untested against a server |
+More detail, including the three key design decisions and their trade-offs, is in
+[docs/architecture.md](docs/architecture.md).
 
-## Run
+![Target architecture](docs/img/architecture.png)
 
-Quick start (Windows, everything native):
+## Quick start
+
+### Prerequisites
+
+- Windows 10/11 (the start script is PowerShell; the Python code is cross-platform)
+- [uv](https://docs.astral.sh/uv/) (installs Python 3.14 and dependencies for you)
+- A model endpoint behind LiteLLM. The development route is a ChatGPT login:
+  `uv run --group gateway python scripts/chatgpt_login.py`
+
+### Run it
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/start_services.ps1    # embed :8081, LiteLLM :4010, OpenViking :1933, UI :8800
-# open http://127.0.0.1:8800 ; stop with: scripts/start_services.ps1 -Stop
-```
-
-The UI covers the whole flow: drop PDFs/images (Process & file, or OCR only), watch the job log, browse the filed folders
-with page images next to the OCR text, approve/correct review items, browse/search the OpenViking tree, ask cited questions.
-
-Requires [uv](https://docs.astral.sh/uv/) and a ChatGPT login for LiteLLM
-(`uv run --group gateway python scripts/chatgpt_login.py`; token in `~/.config/litellm/chatgpt/auth.json`).
-
-```bash
+# 1. Install dependencies
 uv sync --group gateway --group kb
-uv run --group gateway python -m docpipe run data/raw/<file>.pdf          # idempotent; --force re-runs
-uv run --group gateway python -m docpipe review list
-uv run --group gateway python -m docpipe review correct <doc_id> --page 108 --label "text in the row" \
-       --field current --value 511184 --reviewer NAME                    # fix a value, re-validate, re-file
-uv run --group gateway python -m docpipe review approve <doc_id> --reviewer NAME
-uv run --group gateway python -m docpipe kill on|off                      # kill switch: everything goes to review
-uv run --group gateway python -m docpipe ask "Tổng tài sản của ... năm 2025?" [--clearance restricted] [--backend local|openviking]
-uv run --group gateway python -m docpipe ocr data/samples/dkkd_an_phat.png [--force-llm] [--out x.md]   # OCR only
-uv run --group gateway python -m docpipe kb sync all | kb status | kb tree | kb search "<query>"         # OpenViking
-uv run --group gateway python -m docpipe serve                                                          # web UI :8800
-uv run --group gateway python -m docpipe monitor [--watch]                                              # metrics + alerts
-uv run --group gateway python -m docpipe history <doc_id>                                               # filed versions
-uv run --group gateway python -m docpipe rollback <doc_id> [--version N] --actor NAME                   # restore a version
-uv run --group gateway python -m docpipe rollback --release 0.3 --actor NAME                            # undo a bad release
-uv run --group gateway --with pytest pytest -q                                                          # offline unit tests
+
+# 2. Start the gateway, knowledge base and web UI
+powershell -ExecutionPolicy Bypass -File scripts/start_services.ps1
+
+# 3. Open the app
+start http://127.0.0.1:8800
 ```
 
-Output under `data/out/`: `filed/{company}/{year}/{period or doc_type}/*.pdf|json`, `fulltext/` (masked OCR text), `_review/`, `kb_export/*.md` (PII-masked),
-`_restricted/` (PII mapping), `_cache/` (per-page results and routing; makes re-runs resumable and cheap),
-`_corrections/`, `_history/` (earlier filed versions), `audit.jsonl` (every model call and decision), `alerts.jsonl`.
+Stop everything with `scripts/start_services.ps1 -Stop`.
 
-Public test documents (downloaded to `data/raw/`, git-ignored), all publicly posted by the issuers or Vietstock:
-- Vinamilk annual report 2025: `static2.vietstock.vn/data/HOSE/2025/BCTN/VN/VNM_Baocaothuongnien_2025.pdf`
-- Vinamilk annual report 2024: `static2.vietstock.vn/vietstock/2025/3/21/20250321_20250320___vnm___bao_cao_thuong_nien_2024.pdf`
-- Hòa Phát annual reports 2025 and 2024: `file.hoaphat.com.vn/hoaphat-com-vn/2026/04/bao-cao-thuong-nien-2025-1.pdf`, `.../2025/04/bao-cao-thuong-nien-hpg-2024.pdf`
-- Techcombank consolidated financial statements 4Q25 (VAS): `techcombank.com/content/dam/techcombank/public-site/documents/techcombank-vas-bao-cao-tai-chinh-hop-nhat-4q25-searchable.pdf`
+### Try it
 
-Check each issuer's terms before redistributing the files; they are not committed.
+1. In **Inbox**, drop a file from [`data/samples/`](data/samples), for example the registration certificate
+   `dkkd_an_phat.png`.
+2. Watch the job log as the document is read, checked and filed.
+3. Open it in **Library** to see the page image next to the extracted text.
+4. Ask a question in **Knowledge base** and click the citation to open the source page.
 
-## How it decides
+## Results at a glance
 
-1. **Route**: statement pages by title keywords (first 60% of the page text) + numeric density; pages without a text layer are classified by a cheap low-resolution model call (cached).
-2. **Extract**: one call per page returns line items with `current`, `prior` and the printed row. The schema is in the prompt and validated locally with a bounded retry (provider-side schema enforcement does not work on the `chatgpt/` route).
-3. **Validate** (deterministic): balance identities, gross profit, net profit, cash roll-forward, net change, cash tie-out between statements, unit presence/consistency, every number printed in the page text layer; for pages without a text layer, an independent second read must agree.
-4. **Confidence** comes from these signals: each failed check halves it.
-5. **Decide**: below `governance.auto_file_threshold`, kill switch on, or type outside the taxonomy -> review queue.
-   Documents without statement tables (contracts, certificates…) are checked deterministically instead: the classifier's
-   evidence quote and the company name must appear in the OCR text. Only `taxonomy.statement_doc_types` require statement pages.
-6. **Publish**: filed documents (auto or human-approved) go to OpenViking under the same folder keys; review items never do.
-   Only the configured output directory publishes (eval harnesses that redirect `paths.out` cannot write to the KB). Pages the extractor says are not statements are demoted and logged.
+Measured on small samples: 16 synthetic scans with deliberate traps, and real public filings from three issuers.
 
-## Adopt it for another document set
+| What was measured | Result |
+|---|---|
+| Document type, customer and year (16 synthetic scans) | **16 / 16** correct |
+| Printed amounts and codes read exactly | **106 / 106** |
+| Wrong results filed automatically | **0** |
+| Injected errors in real statements sent to review | **6 / 6** |
+| Answerable questions correct with a page citation | **31 / 31** (6 / 6 unanswerable refused) |
+| Cost and time per document | **$0.0013**, about **13 s** |
 
-See `docs/adoption-guide.md`: copy `config/pipeline.yaml`, set taxonomy, model endpoint, thresholds, KB root and the
-alert webhook; measure on 15-20 labelled samples with `evals/general_docs.py --set <folder>` before going live.
+Failure cases matter as much as the scores: the model once invented a table header, and new statement layouts
+produced false alarms. Both are written up in [docs/eval-results.md](docs/eval-results.md).
 
-## Evaluate
+## Challenge deliverables
+
+| Brief item | Where |
+|---|---|
+| Decision memo and business case | [`docs/decision-memo.md`](docs/decision-memo.md) · workbook [`model/business_case.xlsx`](model/business_case.xlsx) |
+| Working prototype and demo | This repository · demo video shared separately (subtitles: [`submission/DocPipe_demo.srt`](submission/DocPipe_demo.srt)) |
+| Architecture and evaluation | [`docs/architecture.md`](docs/architecture.md) · [`docs/eval-results.md`](docs/eval-results.md) |
+| Automation and rollout plan | [`docs/rollout-and-automation.md`](docs/rollout-and-automation.md) · [`docs/adoption-guide.md`](docs/adoption-guide.md) |
+| AI log and reflection | [`docs/ai-log.md`](docs/ai-log.md) |
+| Presentation | [`slides/DocPipe_deck.pptx`](slides/DocPipe_deck.pptx) · live-demo runbook [`docs/demo-script.md`](docs/demo-script.md) |
+| Stakeholders | [`docs/stakeholder-research.md`](docs/stakeholder-research.md) · [`docs/stakeholders.md`](docs/stakeholders.md) · [`docs/interview-notes.md`](docs/interview-notes.md) |
+
+Print-ready PDFs of all of the above are in [`submission/`](submission/README.md).
+
+## Project structure
+
+```text
+docpipe/            the pipeline: OCR, classification, validators, filing, governance, KB adapters, CLI
+  web/              FastAPI app and the single-page UI (port 8800)
+config/             pipeline.yaml: taxonomy, thresholds, model, KB, monitoring
+evals/              evaluation harnesses and the synthetic labelled set generator
+  results/          key evaluation outputs
+tests/              offline unit tests
+data/samples/       small synthetic scans of fictional companies, for trying the app
+deploy/             LiteLLM and OpenViking configs; container files (written, not run)
+services/           embedding shim used by OpenViking
+scripts/            service start-up, sample generation, demo recording, PDF build
+model/              business-case workbook and the script that builds it
+slides/             presentation source (slides/build.js) and the built deck
+docs/               memo, architecture, evaluation, rollout, stakeholders, AI log
+submission/         the PDFs and files sent with the submission
+```
+
+## Usage reference
+
+The web UI covers the whole flow. Everything is also available from the command line.
+
+<details>
+<summary><b>Command line</b></summary>
+
+All commands run as `uv run --group gateway python -m docpipe <command>`.
+
+**Process documents**
 
 ```bash
-uv run python -m evals.make_eval_set                         # 16 synthetic labelled scans (fictional companies)
-uv run --group gateway python -m evals.general_docs         # OCR CER, number recall, type/company/year, decisions, cost
-uv run --group gateway python -m evals.seeded_errors        # injected errors vs governance decisions
-uv run --group gateway python -m evals.scan_sim             # clean vs degraded pages against the text layer
-uv run --group gateway python -m evals.scan_pipeline        # scanned PDF (no text layer) end to end
-uv run --group gateway python -m evals.cross_period         # FY N-1 current vs FY N prior tie-out
-uv run --group gateway python -m evals.kb_qa                # KB Q&A: correctness, citations, refusals, injection, access
-uv run --group gateway python -m evals.injection_extract    # hostile text on the page image
-uv run --group gateway python -m evals.pii_eval             # regex (L1) vs Luna (L0) on seeded synthetic lines
-uv run --group gateway python -m evals.rate_probe           # concurrency / rate limits on the subscription route
+docpipe run data/raw/<file>.pdf              # process and file; idempotent, --force re-runs
+docpipe ocr data/samples/dkkd_an_phat.png    # OCR only (--out x.md to save)
 ```
 
-## Known limits
+**Review**
 
-- Results are development-set behaviour on a few public documents from three issuers and 16 synthetic scans I generated; rules were tuned on them. No held-out accuracy claim on real branch scans.
-- The OCR model can add text that is not on the page (an invented table header was seen); numbers were exact in every case measured.
-- PII masking is regex-only: names and addresses are not masked.
-- Router recall is imperfect (a cash-flow page was missed in one report); two passes by the same model can repeat the same wrong value.
-- Luna as PII detector (L0) is not a privacy barrier: the page image has already gone to the provider.
-- Cost per document is computed from measured tokens x list price; the subscription route records $0 and cannot enforce budgets.
-- About 26-32 s per page sequentially; the worker uses a thread pool (`model.workers`).
-- The machine runs near its memory commit limit: pages are rendered in grayscale with a 2400 px cap, and the embedding model could not load.
+```bash
+docpipe review list
+docpipe review approve <doc_id> --reviewer NAME
+docpipe review correct <doc_id> --page 108 --label "text in the row" \
+        --field current --value 511184 --reviewer NAME     # fix one value, re-check, re-file
+```
+
+**Knowledge base**
+
+```bash
+docpipe ask "Tổng tài sản của ... năm 2025?" [--clearance restricted] [--backend local|openviking]
+docpipe kb sync all | kb status | kb tree | kb search "<query>"
+```
+
+**Operations**
+
+```bash
+docpipe serve                                    # web UI on :8800
+docpipe monitor [--watch]                        # metrics and alerts
+docpipe kill on|off                              # kill switch: everything goes to review
+docpipe history <doc_id>                         # filed versions
+docpipe rollback <doc_id> [--version N] --actor NAME
+docpipe rollback --release 0.3 --actor NAME      # undo everything a bad release filed
+```
+
+</details>
+
+<details>
+<summary><b>Tests and evaluations</b></summary>
+
+```bash
+uv run --group gateway --with pytest pytest -q               # 19 offline unit tests
+
+uv run python -m evals.make_eval_set                         # build the 16 synthetic labelled scans
+uv run --group gateway python -m evals.general_docs          # OCR accuracy, classification, filing decisions, cost
+uv run --group gateway python -m evals.seeded_errors         # injected errors vs governance decisions
+uv run --group gateway python -m evals.scan_sim              # clean vs degraded pages
+uv run --group gateway python -m evals.scan_pipeline         # scanned PDF end to end
+uv run --group gateway python -m evals.cross_period          # prior-year tie-out
+uv run --group gateway python -m evals.kb_qa                 # Q&A: correctness, citations, refusals, injection, access
+uv run --group gateway python -m evals.injection_extract     # hostile text on the page image
+uv run --group gateway python -m evals.pii_eval              # personal-data detection
+```
+
+</details>
+
+## Status and limitations
+
+| Area | Status |
+|---|---|
+| Pipeline, checks, filing, review queue, audit log, kill switch | Working |
+| Web UI, knowledge base (OpenViking), cited Q&A | Working |
+| Monitoring, alerts, version history, rollback | Working |
+| Container deployment, Langfuse tracing, Presidio | Written, never run (containers would not start on the dev machine) |
+
+Known limits, stated plainly:
+
+- Results come from small samples (three issuers, 16 synthetic scans I generated), and some rules were tuned on them.
+  Accuracy on real branch scans is **not yet measured**.
+- The OCR model can add text that is not on the page (an invented table header was seen). Numbers were exact in every
+  case measured.
+- Personal-data masking is pattern-based: names and addresses are not masked yet.
+- Two reads by the same model can repeat the same wrong value.
+- The development model route sends page images to a hosted provider. That is why only public and synthetic documents
+  are used, and why an approved in-bank endpoint is a gate before any pilot.
+
+Service set-up details, what ran on the dev machine and the issues found are in
+[docs/development-notes.md](docs/development-notes.md).
+
+## Data and privacy
+
+- **No customer data.** Everything here is either a public company filing or a synthetic scan of a fictional company.
+- Public filings (Vinamilk, Hòa Phát, Techcombank) are downloaded locally and **not committed**; sources are listed in
+  [docs/development-notes.md](docs/development-notes.md#public-test-documents).
+- Runtime output (`data/out/`), caches, logs, tokens and the demo video are git-ignored.
+
+## Adapting it to other documents
+
+DocPipe is configured, not hard-coded. Copy `config/pipeline.yaml`, set the taxonomy, model endpoint, thresholds,
+knowledge-base root and alert webhook, then measure on 15-20 labelled samples before going live:
+
+```bash
+uv run --group gateway python -m evals.general_docs --set <your-folder>
+```
+
+The step-by-step guide is [docs/adoption-guide.md](docs/adoption-guide.md).
+
+## License and author
+
+**All rights reserved.** Submitted for evaluation in the Techcombank AI Transformation Expert Challenge 2026.
+Third-party components keep their own licences (OpenViking is AGPL-3.0; see the architecture doc for the review note).
+
+Built by **TuanBC**.
